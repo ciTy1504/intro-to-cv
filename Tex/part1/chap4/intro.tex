@@ -1,0 +1,32 @@
+\chapter{Kỷ nguyên Transformer trong Thị giác}
+\label{chap:transformer_era}
+%----------------------------------------------------------------------------------------
+%	INTRODUCTION
+%----------------------------------------------------------------------------------------
+
+Trong gần một thập kỷ, triều đại của Mạng Nơ-ron Tích chập (CNN) trong lĩnh vực thị giác máy tính dường như là bất khả xâm phạm. Từ AlexNet đến ResNet, rồi EfficientNet, triết lý cốt lõi vẫn không thay đổi: xây dựng các biểu diễn phân cấp thông qua các bộ lọc tích chập cục bộ và các phép gộp. Toàn bộ kiến trúc được xây dựng dựa trên một \textbf{thiên kiến quy nạp (inductive bias)} mạnh mẽ và hợp lý: các pixel gần nhau có mối liên hệ mật thiết hơn các pixel ở xa. Một kernel tích chập, về bản chất, là một chuyên gia về "hàng xóm", nó chỉ quan tâm đến một vùng cục bộ nhỏ để phát hiện ra các cạnh, góc, hay kết cấu.
+
+Chính thiên kiến này là nguồn sức mạnh của CNN. Nó giúp mạng học hiệu quả từ dữ liệu, vì nó không cần phải "học" lại một quy luật cơ bản của thế giới tự nhiên. Tuy nhiên, khi các nhà nghiên cứu bắt đầu đẩy các mô hình đến giới hạn của chúng, một câu hỏi bắt đầu nảy sinh: Liệu thiên kiến về tính cục bộ này có phải cũng chính là một chiếc lồng kìm hãm tiềm năng của mô hình?
+
+Hãy tưởng tượng một bức ảnh về một con mèo. Tai của con mèo và đuôi của nó có một mối quan hệ ngữ nghĩa mạnh mẽ, nhưng chúng lại nằm ở hai đầu đối diện của bức ảnh. Để một mạng CNN có thể liên kết hai vùng này, thông tin phải di chuyển qua rất nhiều lớp tích chập và pooling, trường thụ cảm (receptive field) phải được mở rộng một cách từ từ và gián tiếp. Liệu có cách nào để một vùng ảnh có thể "nhìn" trực tiếp và ngay lập tức vào một vùng ảnh khác, bất kể chúng cách xa nhau bao nhiêu, để nắm bắt được các \textbf{liên kết tầm xa (long-range dependencies)} một cách hiệu quả hơn?
+
+Câu trả lời bất ngờ lại đến từ một lĩnh vực hoàn toàn khác: Xử lý Ngôn ngữ Tự nhiên (NLP). Vào năm 2017, một bài báo có tựa đề "Attention Is All You Need" đã giới thiệu kiến trúc \textbf{Transformer}, một mô hình đã thay đổi hoàn toàn cách chúng ta xử lý dữ liệu tuần tự. Thay vì các mạng hồi quy (RNN) xử lý từng từ một, Transformer sử dụng một cơ chế gọi là \textbf{tự chú ý (self-attention)}, cho phép mỗi từ trong một câu "nhìn" vào tất cả các từ khác để xác định bối cảnh và ý nghĩa của nó. Các mô hình khổng lồ như BERT và GPT, được xây dựng trên nền tảng Transformer, đã tạo ra một cuộc cách mạng trong NLP.
+
+Điều này đã dẫn đến một câu hỏi táo bạo và có phần phản trực giác: \textit{Điều gì sẽ xảy ra nếu chúng ta ngừng xem một bức ảnh như một lưới pixel, và bắt đầu xem nó như một câu văn?}
+
+Đây chính là ý tưởng đột phá đằng sau \textbf{Vision Transformer (ViT)}. Thay vì xử lý từng pixel, ViT chia một bức ảnh thành một lưới các "mảnh vá" (patches) nhỏ. Mỗi mảnh vá sau đó được "dát phẳng" thành một vector và được xem như một "từ" trong một câu. Chuỗi các "từ thị giác" này sau đó được đưa vào một kiến trúc Transformer tiêu chuẩn. Cơ chế self-attention giờ đây cho phép mỗi mảnh vá tương tác với tất cả các mảnh vá khác trong ảnh. Một mảnh vá chứa "tai mèo" có thể trực tiếp "chú ý" đến mảnh vá chứa "đuôi mèo" để củng cố nhận định của mình. Nó đã phá vỡ gông cùm của tính cục bộ.
+
+Trong chương này, chúng ta sẽ bước vào kỷ nguyên mới của thị giác máy tính, một kỷ nguyên được định hình bởi sự chú ý và các mối quan hệ toàn cục:
+\begin{itemize}
+	\item \textbf{Từ bỏ Tích chập:} Chúng ta sẽ phân tích sâu hơn những hạn chế của CNN và tại sao cộng đồng nghiên cứu lại cần một kiến trúc mới để vượt qua các giới hạn về hiệu năng.
+	
+	\item \textbf{Vision Transformer (ViT):} Chúng ta sẽ mổ xẻ kiến trúc ViT, tìm hiểu cách một bức ảnh được biến thành một chuỗi các "từ" thông qua \textit{Patch Embedding} và \textit{Positional Encoding}, và cách cơ chế \textit{Self-Attention} được áp dụng cho dữ liệu hình ảnh.
+	
+	\item \textbf{Các Biến thể và Cải tiến:} Sự ra đời của ViT đã mở ra một làn sóng nghiên cứu khổng lồ. Chúng ta sẽ khám phá các kiến trúc kế thừa quan trọng như \textbf{Swin Transformer}, vốn đưa tính cục bộ trở lại một cách thông minh, và \textbf{DeiT}, vốn tìm ra cách huấn luyện Transformer hiệu quả trên các bộ dữ liệu nhỏ hơn.
+	
+	\item \textbf{Kiến trúc Lai và So sánh:} Cuộc chiến giữa hai trường phái không nhất thiết phải có một người thắng tuyệt đối. Chúng ta sẽ xem xét các mô hình lai (hybrid) kết hợp sức mạnh của cả CNN và Transformer, và đưa ra những phân tích sâu sắc về việc khi nào nên sử dụng kiến trúc nào.
+	
+	\item \textbf{Các Mô hình Thị giác SOTA:} Cuối cùng, chúng ta sẽ điểm qua những kiến trúc tiên tiến nhất đang định hình tương lai của lĩnh vực, những mô hình đã phá vỡ các kỷ lục về hiệu năng trong giai đoạn 2024-2025.
+\end{itemize}
+
+Chương 4 đánh dấu một bước ngoặt không chỉ về mặt kiến trúc, mà còn về mặt tư duy. Nó làm mờ đi ranh giới giữa thị giác và ngôn ngữ, hợp nhất hai lĩnh vực lớn nhất của AI dưới một khung làm việc chung. Hãy cùng khám phá cách "sự chú ý" đã thay đổi cách máy tính "nhìn" thế giới.

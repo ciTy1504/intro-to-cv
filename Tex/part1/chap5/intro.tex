@@ -1,0 +1,22 @@
+\chapter{Các Bài toán Thị giác Cốt lõi \& Kiến trúc Chuyên biệt}
+\label{chap:core_vision_tasks}
+
+Chúng ta đã dành hai chương vừa qua để rèn giũa những "con mắt" kỹ thuật số vô cùng mạnh mẽ. Từ các khối tích chập hiệu quả của CNN đến khả năng lý luận toàn cục của Transformer, chúng ta đã xây dựng nên những kiến trúc "xương sống" (backbone) có khả năng chưng cất một bức ảnh thô thành một biểu diễn đặc trưng (feature representation) giàu ngữ nghĩa. Nhưng thị giác không chỉ dừng lại ở việc nhận biết. Đỉnh cao của sự thấu hiểu thị giác không phải là để trả lời câu hỏi "Trong ảnh này có một con mèo phải không?", mà là để trả lời những câu hỏi sâu sắc và chi tiết hơn rất nhiều: \textit{"Con mèo đó đang ở đâu trong ảnh?"}, \textit{"Hình dạng chính xác của nó là gì?"}, \textit{"Các bộ phận cơ thể của nó được sắp xếp ra sao?"}, và \textit{"Nó đang di chuyển như thế nào?"}.
+
+Đây chính là sứ mệnh của chương này. Chúng ta sẽ chuyển từ việc xây dựng các "động cơ" thị giác có mục đích chung sang việc thiết kế những "cỗ máy" chuyên dụng, được tinh chỉnh để giải quyết các bài toán thị giác cốt lõi. Nếu một mạng phân loại ảnh giống như một nhà chẩn đoán tổng quát, thì các kiến trúc mà chúng ta sắp tìm hiểu giống như những bác sĩ phẫu thuật chuyên khoa: chúng không chỉ nhận diện vấn đề, mà còn phải định vị, khoanh vùng và phân tích nó với độ chính xác cực cao.
+
+Chương này sẽ đưa chúng ta vào trung tâm của các ứng dụng thị giác máy tính hiện đại, nơi các biểu diễn trừu tượng được biến thành các kết quả đầu ra có cấu trúc và có thể hành động. Chúng ta sẽ khám phá cách các kiến trúc xương sống được điều chỉnh và mở rộng với các "đầu" (heads) chuyên biệt để giải phẫu một khung cảnh thị giác:
+
+\begin{itemize}
+	\item \textbf{Phát hiện Vật thể (Object Detection):} Vượt qua giới hạn của một nhãn duy nhất, chúng ta sẽ học cách huấn luyện các mô hình để không chỉ nhận diện mà còn \textit{định vị} nhiều đối tượng trong một ảnh. Từ các kiến trúc kinh điển dựa trên CNN như YOLO và Faster R-CNN, đến các phương pháp hiện đại dựa trên Transformer như DETR, chúng ta sẽ tìm hiểu cách vẽ nên những "khung hộp" (bounding boxes) chính xác xung quanh mọi vật thể.
+	
+	\item \textbf{Phân đoạn Ảnh (Image Segmentation):} Chúng ta sẽ tiến một bước xa hơn về độ chi tiết, từ những chiếc hộp vuông vức đến việc tô màu cho từng pixel. Phân đoạn ảnh trả lời câu hỏi về hình dạng chính xác của vật thể. Chúng ta sẽ khám phá các kiến trúc mã hóa-giải mã (encoder-decoder) thanh lịch như U-Net, các mô hình phân đoạn tức thời (instance segmentation) như Mask R-CNN, và tất nhiên, cuộc cách mạng gần đây mang tên \textit{Segment Anything Model (SAM)}.
+	
+	\item \textbf{Các Bài toán khác về Con người và Chuyển động:} Thị giác không chỉ là về các vật thể tĩnh. Chúng ta sẽ tìm hiểu về các bài toán phức tạp hơn như \textbf{Ước tính Tư thế (Pose Estimation)}—tìm ra "bộ xương" của con người hay vật thể—và \textbf{Theo dõi Đối tượng (Object Tracking)}, bài toán thêm vào chiều thời gian để trả lời câu hỏi "Đối tượng này đã đi đâu?".
+	
+	\item \textbf{Thách thức của Thế giới Thực:} Các mô hình hoạt động tốt trong phòng thí nghiệm có thể thất bại thảm hại khi triển khai trong thực tế. Chúng ta sẽ thảo luận về một vấn đề cốt lõi: \textbf{Thích ứng và Tổng quát hóa Miền (Domain Adaptation \& Generalization)}, tức là làm thế nào để một mô hình được huấn luyện trên dữ liệu mùa hè vẫn có thể hoạt động tốt vào mùa đông.
+	
+	\item \textbf{Kỷ nguyên của các Mô hình Nền tảng:} Cuối cùng, chúng ta sẽ chứng kiến sự thay đổi mô thức mới nhất, nơi các mô hình nền tảng (Foundation Models) được huấn luyện trước trên quy mô web đang dần thay thế các mô hình chuyên biệt. Các mô hình như Grounding DINO có thể được "ra lệnh" để phát hiện bất kỳ đối tượng nào chỉ bằng ngôn ngữ, mở ra một kỷ nguyên mới của thị giác có khả năng tương tác và linh hoạt.
+\end{itemize}
+
+Chào mừng bạn đến với tuyến đầu của thị giác ứng dụng. Trong chương này, chúng ta sẽ không chỉ "nhìn", mà sẽ bắt đầu "giải phẫu", "lý luận" và "tương tác" với thế giới thị giác một cách sâu sắc và có cấu trúc.

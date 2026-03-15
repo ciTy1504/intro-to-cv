@@ -1,0 +1,31 @@
+\chapter{Học Biểu diễn và Kỷ nguyên Dữ liệu}
+\label{chap:representation_learning}
+%----------------------------------------------------------------------------------------
+%	INTRODUCTION
+%----------------------------------------------------------------------------------------
+
+Trong suốt hành trình đã qua, chúng ta đã chứng kiến sự trỗi dậy của những kiến trúc hùng mạnh, từ CNN đến Transformer, có khả năng đạt được hiệu năng siêu phàm trên các bài toán thị giác. Tuy nhiên, đằng sau những thành công đó luôn có một người hùng thầm lặng nhưng không thể thiếu: các bộ dữ liệu được gán nhãn cẩn thận và quy mô lớn. ImageNet, với hơn một triệu ảnh được gán nhãn thủ công, chính là "nhiên liệu" đã đốt cháy cuộc cách mạng học sâu.
+
+Mô thức \textit{học có giám sát (supervised learning)} này—học từ các cặp (ảnh, nhãn)—đã thống trị lĩnh vực trong một thời gian dài. Nhưng nó cũng bộc lộ một "gót chân Achilles": sự phụ thuộc vào dữ liệu có nhãn. Trong thế giới thực, 99\% dữ liệu thị giác là không có nhãn. Internet chứa hàng tỷ bức ảnh và video, nhưng việc gán nhãn cho chúng ở quy mô này là một công việc bất khả thi. Sự khan hiếm của dữ liệu có nhãn đã trở thành "cổ chai" lớn nhất kìm hãm sự phát triển của AI.
+
+Chương này sẽ đưa chúng ta vào một cuộc cách mạng thứ hai, một sự thay đổi mô thức sâu sắc về cách chúng ta huấn luyện các mô hình. Điều gì sẽ xảy ra nếu chúng ta có thể dạy một cỗ máy "nhìn" mà không cần phải nói cho nó biết tên của mọi thứ? Điều gì sẽ xảy ra nếu bản thân dữ liệu, trong dạng thô, hỗn loạn và không có nhãn của nó, lại ẩn chứa đủ tín hiệu để một mô hình có thể tự học được "ngữ pháp" của thế giới thị giác?
+
+Đây chính là kỷ nguyên của \textbf{Học Biểu diễn (Representation Learning)} và \textbf{AI Lấy Dữ liệu làm Trung tâm (Data-centric AI)}. Thay vì tập trung vào việc thiết kế một kiến trúc chỉ để giải quyết một tác vụ cụ thể, mục tiêu giờ đây là học một \textit{biểu diễn} (representation) nội tại, phong phú và tổng quát về dữ liệu. Một biểu diễn tốt sẽ giống như một "bộ não thị giác" đa năng, có thể được tái sử dụng và tinh chỉnh một cách dễ dàng cho vô số các tác vụ khác nhau.
+
+Trong chương này, chúng ta sẽ khám phá những ý tưởng đột phá đã giải phóng AI khỏi sự phụ thuộc vào nhãn:
+
+\begin{itemize}
+	\item \textbf{Học Tự giám sát (Self-Supervised Learning - SSL):} Đây là nghệ thuật tạo ra các "bài toán giả" (pretext tasks) để mô hình có thể tự học từ dữ liệu không nhãn. Chúng ta sẽ khám phá hai trường phái chính: các phương pháp \textit{tương phản} dạy mô hình biết "cái gì giống cái gì", và các phương pháp \textit{che giấu} (masking) thách thức mô hình "đoán phần còn thiếu".
+	
+	\item \textbf{Học sâu Đo lường (Deep Metric Learning):} Vượt ra ngoài việc học đặc trưng, chúng ta sẽ tìm hiểu cách tổ chức không gian đặc trưng sao cho các đối tượng tương tự được kéo lại gần nhau và các đối tượng khác biệt bị đẩy ra xa, một nguyên lý cốt lõi cho các hệ thống tìm kiếm ảnh.
+	
+	\item \textbf{AI Lấy Dữ liệu làm Trung tâm (Data-centric AI):} Một sự thay đổi triết lý quan trọng: thay vì chỉ tập trung vào việc tinh chỉnh mô hình, chúng ta sẽ khám phá tầm quan trọng của việc cải thiện, làm sạch và làm giàu chính bộ dữ liệu.
+	
+	\item \textbf{Học với Ít dữ liệu hơn (Zero-shot \& Few-shot Learning):} Một khi đã có một biểu diễn mạnh mẽ, liệu chúng ta có thể dạy mô hình nhận ra một khái niệm mới chỉ với một vài ví dụ, hoặc thậm chí không cần ví dụ nào, chỉ bằng cách mô tả nó bằng ngôn ngữ?
+	
+	\item \textbf{Học Liên tục (Continual Learning):} Trong thế giới thực, dữ liệu luôn thay đổi. Chúng ta sẽ tìm hiểu thách thức trong việc dạy mô hình học các khái niệm mới mà không "quên" đi những gì nó đã biết.
+	
+	\item \textbf{Các Mô hình Nền tảng như những Cỗ máy Học Biểu diễn:} Cuối cùng, chúng ta sẽ chứng kiến sự hội tụ của tất cả các ý tưởng trên trong các mô hình nền tảng khổng lồ như \textbf{DINOv2}, \textbf{OpenCLIP}, và \textbf{I-JEPA}. Đây không còn là các mô hình cho một tác vụ, mà là các hệ thống cung cấp các biểu diễn "có sẵn" (off-the-shelf), mạnh mẽ cho gần như mọi bài toán thị giác.
+\end{itemize}
+
+Chào mừng bạn đến với tương lai của việc huấn luyện AI. Chương này sẽ không chỉ thay đổi cách bạn xây dựng mô hình, mà còn thay đổi cách bạn nghĩ về dữ liệu, về việc học, và về bản chất của sự "thấu hiểu" thị giác.

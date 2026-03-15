@@ -1,0 +1,25 @@
+\chapter{Kỷ nguyên Mạng Nơ-ron Tích chập (CNNs)}
+\label{chap:cnn_era}
+
+Nếu chương trước là câu chuyện về những người thợ thủ công bậc thầy, những người đã tỉ mỉ chế tác nên từng công cụ để mổ xẻ thế giới thị giác, thì chương này là một bản tuyên ngôn về một cuộc cách mạng. Chúng ta đang bước vào một kỷ nguyên mới, nơi triết lý thay đổi một cách căn bản: thay vì \textit{thiết kế} các bộ trích xuất đặc trưng, chúng ta sẽ xây dựng những cỗ máy có khả năng \textit{tự học} chúng.
+
+Những hạn chế mà chúng ta đã thảo luận ở cuối chương 2—sự mong manh trước các biến đổi phức tạp, "vực thẳm ngữ nghĩa", và sự bão hòa về hiệu năng—không phải là những trở ngại nhỏ có thể vượt qua bằng một vài tinh chỉnh. Chúng là những bức tường, là dấu hiệu cho thấy cách tiếp cận thủ công đã đi đến giới hạn của nó. Cần một mô hình mới, một sự thay đổi mô thức (paradigm shift) có khả năng tự động khám phá các quy luật ẩn sâu trong dữ liệu pixel, một kiến trúc có thể học được các biểu diễn (representations) từ đơn giản đến phức tạp.
+
+Câu trả lời đã đến, và nó được lấy cảm hứng từ một trong những cỗ máy tính toán thị giác mạnh mẽ nhất từng được biết đến: bộ não của chính chúng ta. Vào những năm 1950-1960, các nhà thần kinh học David Hubel và Torsten Wiesel đã thực hiện những thí nghiệm đột phá, khám phá ra rằng vỏ não thị giác (visual cortex) được tổ chức theo một cấu trúc phân cấp. Các nơ-ron ở các tầng thấp hơn phản ứng với những kích thích đơn giản như các cạnh sáng ở các hướng nhất định, trong khi các nơ-ron ở các tầng cao hơn tích hợp tín hiệu từ các tầng thấp để nhận diện các hình dạng phức tạp hơn.
+
+\textbf{Mạng Nơ-ron Tích chập (Convolutional Neural Network - CNN)} chính là sự hiện thực hóa của nguyên lý sinh học đẹp đẽ này trong thế giới tính toán. Thay vì lập trình cứng cho máy tính biết "một cái cạnh trông như thế nào", chúng ta xây dựng một kiến trúc có các khối xây dựng cơ bản, và thông qua quá trình huấn luyện trên hàng triệu ví dụ, mạng sẽ tự động học được các bộ lọc để phát hiện cạnh, góc, kết cấu, màu sắc, và sau đó là các bộ phận của vật thể, và cuối cùng là toàn bộ vật thể.
+
+Trong chương này, chúng ta sẽ mổ xẻ "bộ gen" của kiến trúc đã thay đổi thế giới này:
+\begin{itemize}
+	\item Chúng ta sẽ bắt đầu với các thành phần \textbf{nền tảng kiến trúc}. Khám phá phép \textbf{tích chập (convolution)} như trái tim của mạng, cơ chế "nhìn" cục bộ cho phép chia sẻ tham số và tạo ra tính bất biến với tịnh tiến. Sau đó là \textbf{pooling}, quá trình "nheo mắt" để tổng hợp thông tin và tạo ra sự bền bỉ trước các biến dạng nhỏ. Và cuối cùng là các \textbf{hàm kích hoạt phi tuyến} như ReLU, "công tắc" cho phép mạng học các mối quan hệ phức tạp.
+	
+	\item Tiếp theo, chúng ta sẽ thực hiện một hành trình xuyên qua lịch sử, khám phá các \textbf{kiến trúc kinh điển} đã đặt những viên gạch đầu tiên. Từ \textbf{AlexNet}, kiến trúc đã gây chấn động tại cuộc thi ImageNet 2012 và chứng minh sức mạnh của học sâu, cho đến \textbf{VGG} với sự đơn giản và thanh lịch trong thiết kế.
+	
+	\item Từ nền tảng đó, chúng ta sẽ tiến tới các \textbf{kiến trúc hiện đại} đã thực sự mở khóa tiềm năng của các mạng rất sâu. \textbf{ResNet} với các "kết nối tắt" (skip connections) thiên tài đã giải quyết bài toán suy giảm gradient, cho phép huấn luyện các mạng sâu hàng trăm, thậm chí hàng nghìn lớp. Chúng ta cũng sẽ tìm hiểu về các biến thể hiệu quả hơn như \textbf{DenseNet} và \textbf{EfficientNet}.
+	
+	\item Chúng ta sẽ vén bức màn bí mật đằng sau việc huấn luyện thành công các mạng khổng lồ này, thông qua các \textbf{kỹ thuật tối ưu hóa} thiết yếu như Batch Normalization, Dropout, và Data Augmentation.
+	
+	\item Cuối cùng, chúng ta sẽ thấy tất cả những mảnh ghép này kết hợp lại để giải quyết \textbf{ứng dụng kinh điển} đã thúc đẩy toàn bộ lĩnh vực: phân loại ảnh. Và nhìn về phía trước, chúng ta sẽ khám phá các kiến trúc \textbf{CNN nhỏ gọn} được thiết kế đặc biệt cho các thiết bị biên (Edge AI), nơi hiệu quả tính toán là tối quan trọng.
+\end{itemize}
+
+Chương 3 không chỉ là một chương về thuật toán. Đó là câu chuyện về một triết lý mới, một cuộc chuyển giao quyền lực từ người thiết kế sang dữ liệu. Bằng cách hiểu rõ các nguyên lý của CNN, bạn sẽ được trang bị bộ công cụ mạnh mẽ nhất trong thị giác máy tính hiện đại, và quan trọng hơn, bạn sẽ thấu hiểu được tư duy "học biểu diễn" — nền tảng không chỉ cho CNN mà còn cho cả những cuộc cách mạng kiến trúc sẽ đến trong các chương tiếp theo.

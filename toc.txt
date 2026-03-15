@@ -1,0 +1,555 @@
+PHẦN I: BÁCH KHOA TOÀN THƯ VỀ LÝ THUYẾT THỊ GIÁC MÁY TÍNH
+
+CHƯƠNG 1: NHẬP MÔN – TỪ PIXEL ĐẾN NHẬN THỨC
+
+1.1. ĐỊNH NGHĨA VÀ PHẠM VI
+- Thị giác máy tính (Computer Vision - CV) là lĩnh vực nghiên cứu giúp máy tính “nhìn” và “hiểu” hình ảnh, video.
+- Mục tiêu: trích xuất thông tin có ý nghĩa từ dữ liệu hình ảnh.
+- Ứng dụng: nhận dạng khuôn mặt, xe tự lái, giám sát thông minh, y tế, AR/VR, robot.
+- Phân loại bài toán CV:
+  + Nhận dạng (Classification)
+  + Phát hiện vật thể (Detection)
+  + Phân đoạn ảnh (Segmentation)
+  + Dự đoán chuyển động, tư thế (Pose, Tracking)
+  + Hiểu cảnh (Scene Understanding)
+
+1.2. NỀN TẢNG TOÁN HỌC VÀ XỬ LÝ TÍN HIỆU
+- Các khái niệm cơ bản:
+  + Ma trận ảnh (matrix), pixel intensity, histogram.
+  + Biến đổi Fourier, biến đổi Cosine (DCT), Wavelet.
+  + Convolution & Correlation trong miền không gian và tần số.
+- Ứng dụng:
+  + Làm mờ, khử nhiễu, phát hiện biên.
+  + Tăng cường ảnh (Enhancement) và khôi phục ảnh (Restoration).
+
+1.3. BIỂU DIỄN ẢNH VÀ VIDEO KỸ THUẬT SỐ
+- Ảnh số = tập hợp pixel có giá trị cường độ (grayscale) hoặc RGB.
+- Video = chuỗi khung hình (frame sequence) có thông tin thời gian.
+- Định dạng phổ biến:
+  + Ảnh: JPEG, PNG, BMP, TIFF.
+  + Video: MP4, AVI, MOV.
+- Biểu diễn màu: RGB, HSV, Lab, YCbCr.
+- Độ phân giải, tỷ lệ khung hình (frame rate), bit depth ảnh hưởng trực tiếp đến chất lượng thị giác.
+
+1.4. CẢM BIẾN & COMPUTATIONAL IMAGING
+- Cảm biến CMOS, CCD – chuyển đổi ánh sáng thành tín hiệu điện.
+- Event-based Vision (Dynamic Vision Sensor – DVS):
+  + Ghi nhận thay đổi cường độ ánh sáng theo thời gian, không phải từng khung.
+  + Ưu điểm: tốc độ cao, năng lượng thấp.
+- HDR (High Dynamic Range):
+  + Kết hợp nhiều mức phơi sáng để tái tạo chi tiết vùng sáng/tối.
+- Light Field Camera:
+  + Ghi nhận hướng đi của tia sáng, cho phép tái lấy nét sau khi chụp.
+  + Ứng dụng trong 3D reconstruction, depth estimation.
+
+1.5. ĐẠO ĐỨC, FAIRNESS & PRIVACY TRONG KỶ NGUYÊN THỊ GIÁC AI
+- Rủi ro:
+  + Bias trong dữ liệu dẫn đến phân biệt đối xử.
+  + Vi phạm quyền riêng tư (giám sát, nhận dạng trái phép).
+- Hướng khắc phục:
+  + Dataset cân bằng, đa dạng.
+  + Giải pháp bảo vệ quyền riêng tư (Federated Learning, Differential Privacy).
+  + Tiêu chuẩn đạo đức trong ứng dụng AI thị giác.
+
+CHƯƠNG 2: XỬ LÝ ẢNH NỀN TẢNG & TRÍCH XUẤT ĐẶC TRƯNG CỔ ĐIỂN
+
+2.1. CÁC PHÉP TOÁN VÀ LỌC ẢNH CƠ BẢN
+
+2.1.1. Convolution và Kernel
+- Convolution: phép toán nhân chập giữa ảnh và bộ lọc (kernel).
+- Kernel: ma trận nhỏ (3×3, 5×5, …) trượt qua ảnh để tính đặc trưng cục bộ.
+- Dùng cho: làm mờ, phát hiện biên, trích xuất họa tiết.
+
+2.1.2. Làm mờ ảnh (Smoothing)
+- Giảm nhiễu, mượt hóa ảnh.
+- Gaussian Blur: dùng phân bố chuẩn → loại bỏ nhiễu tần cao.
+- Box Filter: trung bình đều, tính đơn giản nhưng dễ mất chi tiết.
+
+2.1.3. Làm sắc nét (Sharpening)
+- Làm nổi bật biên và chi tiết.
+- Laplacian Filter: dùng đạo hàm bậc hai.
+- Unsharp Masking: ảnh gốc – ảnh mờ → cộng lại để tăng độ nét.
+
+2.1.4. Phát hiện biên (Edge Detection)
+- Biên = vùng có thay đổi cường độ mạnh.
+- Bộ lọc phổ biến:
+  + Sobel, Prewitt: gradient-based.
+  + Canny: phát hiện biên tối ưu, có bước non-maximum suppression và hysteresis.
+
+2.1.5. Các phép toán hình thái học (Morphological Operations)
+- Áp dụng cho ảnh nhị phân.
+- Dilation (giãn), Erosion (co), Opening, Closing.
+- Dựa trên cấu trúc phần tử (structuring element).
+- Ứng dụng: tách đối tượng, khử nhiễu, trích vùng quan tâm.
+
+2.2. PHÁT HIỆN ĐIỂM ĐẶC TRƯNG (KEYPOINT DETECTION)
+
+2.2.1. Harris Corner Detector
+- Dựa trên thay đổi cường độ theo hai hướng → phát hiện góc.
+- Ổn định với nhiễu, nhưng không bất biến theo scale.
+
+2.2.2. Shi-Tomasi Corner
+- Cải tiến Harris: chọn giá trị nhỏ nhất của ma trận tự tương quan → chính xác hơn.
+
+2.2.3. FAST (Features from Accelerated Segment Test)
+- So sánh cường độ pixel trung tâm với vòng tròn xung quanh (16 điểm).
+- Nhanh, phù hợp với real-time (dùng trong ORB, SLAM).
+
+2.3. TRÍCH XUẤT ĐẶC TRƯNG THỦ CÔNG (HANDCRAFTED FEATURES)
+
+2.3.1. SIFT (Scale-Invariant Feature Transform)
+- Bất biến với scale, quay, ánh sáng.
+- Các bước: tìm keypoint, tính orientation, xây dựng descriptor 128D.
+
+2.3.2. SURF (Speeded-Up Robust Features)
+- Tối ưu hóa SIFT, dùng tích hợp Haar wavelet → nhanh hơn.
+
+2.3.3. ORB (Oriented FAST and Rotated BRIEF)
+- Kết hợp FAST + BRIEF, nhẹ, thích hợp thiết bị di động.
+- Dùng trong AR, SLAM.
+
+2.3.4. HOG (Histogram of Oriented Gradients)
+- Mô tả hướng gradient theo ô (cell).
+- Ứng dụng: phát hiện người, phương tiện.
+
+2.3.5. Ưu, nhược điểm của đặc trưng thủ công
+- Ưu: dễ hiểu, không cần huấn luyện.
+- Nhược: phụ thuộc tay thiết kế, kém tổng quát, khó mở rộng cho dữ liệu phức tạp.
+
+2.4. BIỂU DIỄN & MATCHING ĐẶC TRƯNG TRUYỀN THỐNG
+
+2.4.1. Bag of Visual Words (BoVW)
+- Gán mỗi descriptor vào “từ vựng” (cluster) → histogram biểu diễn ảnh.
+
+2.4.2. Fisher Vectors
+- Mô hình hóa phân bố đặc trưng bằng Gaussian Mixture Model (GMM).
+- Nâng cao BoVW với vector hóa thống kê.
+
+2.4.3. VLAD (Vector of Locally Aggregated Descriptors)
+- Gộp các residual giữa descriptor và centroid.
+- Hiệu quả cao hơn BoVW, phổ biến trong image retrieval.
+
+2.4.4. ỨNG DỤNG
+- Image Retrieval, Object Recognition, Scene Classification.
+
+2.5. HẠN CHẾ & CẦU NỐI SANG HỌC SÂU
+- Khó xử lý biến đổi hình học, ánh sáng, scale.
+- Không tổng quát cho dữ liệu phức tạp.
+- Vai trò lịch sử: đặt nền tảng cho CNN ra đời (2012, AlexNet).
+
+CHƯƠNG 3: KỶ NGUYÊN MẠNG NƠ-RON TÍCH CHẬP (CNNs)
+
+3.1. NỀN TẢNG KIẾN TRÚC
+
+3.1.1. CONVOLUTION: CƠ CHẾ TRƯỢT NHÂN TÍCH CHẬP
+- Convolution là phép toán cốt lõi trong CNN, giúp trích xuất đặc trưng cục bộ từ ảnh.
+- Cơ chế hoạt động:
+  + Dùng một "kernel" (hoặc filter) nhỏ, ví dụ 3×3 hoặc 5×5.
+  + Kernel trượt trên toàn ảnh, nhân từng phần tử và cộng lại → tạo ra giá trị đầu ra (feature map).
+- Mỗi kernel học một loại đặc trưng: cạnh, góc, họa tiết, v.v.
+- Đặc điểm nổi bật:
+  + Tính cục bộ (local connectivity): mỗi neuron chỉ kết nối với vùng nhỏ.
+  + Chia sẻ trọng số (weight sharing): cùng kernel áp dụng cho toàn ảnh.
+  + Giảm số lượng tham số → giảm độ phức tạp và overfitting.
+- Kết quả: mô hình học được các đặc trưng không gian (spatial features) mạnh mẽ.
+
+3.1.2. POOLING: MAX POOLING, AVERAGE POOLING, GLOBAL POOLING
+- Pooling giúp giảm kích thước feature map và làm nổi bật đặc trưng quan trọng.
+- Các loại chính:
+  + Max Pooling: chọn giá trị lớn nhất trong vùng (phổ biến nhất).
+  + Average Pooling: lấy trung bình giá trị trong vùng.
+  + Global Average Pooling: lấy trung bình toàn bộ feature map → giảm xuống vector 1D.
+- Vai trò:
+  + Giảm overfitting.
+  + Tăng tính bất biến với dịch chuyển, xoay, nhiễu.
+  + Giảm chi phí tính toán.
+
+3.1.3. ACTIVATION: RELU, GELU, MISH VÀ VAI TRÒ PHI TUYẾN
+- Hàm kích hoạt (activation function) thêm yếu tố phi tuyến, giúp mạng học được quan hệ phức tạp.
+- Các loại phổ biến:
+  + ReLU (Rectified Linear Unit): f(x) = max(0, x) → đơn giản, nhanh, giảm vanishing gradient.
+  + Leaky ReLU: cải thiện ReLU bằng cách giữ gradient nhỏ ở phần âm.
+  + GELU (Gaussian Error Linear Unit): f(x) = x * Φ(x) → mượt hơn, phổ biến trong Transformer.
+  + Mish: f(x) = x * tanh(softplus(x)) → giúp gradient ổn định, học sâu hơn.
+- Activation là chìa khóa cho khả năng biểu diễn của CNN.
+
+3.2. CÁC KIẾN TRÚC KINH ĐIỂN: ALEXNET, VGG
+
+- AlexNet (2012, Krizhevsky et al.):
+  + Đánh dấu bước ngoặt của Deep Learning trong thị giác.
+  + 8 tầng: 5 convolution + 3 fully-connected.
+  + Dùng ReLU, dropout, và GPU song song để tăng tốc huấn luyện.
+  + Giảm lỗi top-5 trên ImageNet từ 26% xuống 15%.
+  + Mở đầu kỷ nguyên CNN hiện đại.
+
+- VGG (2014, Simonyan & Zisserman):
+  + Đơn giản và đồng nhất: dùng kernel 3×3, stride 1, padding 1 cho toàn bộ mạng.
+  + Cấu trúc sâu hơn (16–19 tầng).
+  + Feature representation rất mạnh, dùng rộng rãi làm backbone.
+  + Hạn chế: kích thước mô hình lớn, tiêu tốn bộ nhớ.
+
+3.3. CÁC KIẾN TRÚC HIỆN ĐẠI: RESNET, DENSENET, EFFICIENTNET
+
+- ResNet (2015, He et al.):
+  + Giới thiệu “Residual Connection” – đường tắt (skip connection).
+  + Giải quyết vấn đề vanishing gradient khi mạng sâu.
+  + Công thức: y = F(x) + x → mạng học phần “chênh lệch”.
+  + Mở đường cho mạng cực sâu (ResNet-50, ResNet-101, ResNet-152).
+
+- DenseNet (2017):
+  + Kết nối mọi lớp với nhau theo dạng dense.
+  + Mỗi lớp nhận đầu vào là đầu ra của tất cả lớp trước đó.
+  + Giảm số tham số, cải thiện gradient flow, tái sử dụng đặc trưng.
+
+- EfficientNet (2019, Google):
+  + Sử dụng phương pháp Compound Scaling: đồng thời mở rộng depth, width, resolution theo hệ số φ.
+  + Đạt hiệu suất cao hơn ResNet/VGG với ít tham số hơn.
+  + EfficientNet-B0 → B7, và phiên bản Lite cho thiết bị di động.
+
+
+3.4. CÁC KỸ THUẬT TỐI ƯU: BATCH NORMALIZATION, DROPOUT, DATA AUGMENTATION
+
+- Batch Normalization (BN):
+  + Chuẩn hóa đầu ra của từng lớp theo batch.
+  + Ổn định quá trình học, giảm phụ thuộc vào khởi tạo trọng số.
+  + Cho phép sử dụng learning rate cao hơn → huấn luyện nhanh hơn.
+
+- Dropout:
+  + Ngẫu nhiên “tắt” một số neuron trong quá trình huấn luyện.
+  + Giúp mạng học robust hơn, tránh overfitting.
+
+- Data Augmentation:
+  + Tạo thêm dữ liệu huấn luyện bằng biến đổi ảnh: xoay, lật, cắt, thay đổi sáng/tối, noise.
+  + Giúp mô hình tổng quát hóa tốt hơn, đặc biệt khi dữ liệu gốc ít.
+
+
+3.5. ỨNG DỤNG: PHÂN LOẠI ẢNH (IMAGE CLASSIFICATION)
+
+- Bài toán cơ bản nhất trong Computer Vision.
+- Input: ảnh (ví dụ: mèo, chó, xe, người…).
+- Output: nhãn (class) tương ứng.
+- Pipeline:
+  1. Tiền xử lý (resize, normalize).
+  2. Huấn luyện CNN (AlexNet, VGG, ResNet, EfficientNet...).
+  3. Dự đoán xác suất mỗi lớp → chọn lớp có xác suất cao nhất.
+- Ứng dụng:
+  + Nhận dạng khuôn mặt, sản phẩm, cây trồng, bệnh trên da, phân loại y tế, camera AI, v.v.
+- Metric phổ biến: Accuracy, Top-1 / Top-5 Accuracy, Confusion Matrix.
+
+3.6. CNN NHỎ GỌN CHO EDGE AI: MOBILENETV3, EFFICIENTNET-LITE, CONVNEXT
+
+- MobileNetV3 (2019, Google):
+  + Thiết kế dựa trên NAS (Neural Architecture Search) và hạ tầng mobile.
+  + Sử dụng Depthwise Separable Convolution để giảm FLOPs.
+  + Kết hợp hạt nhân ReLU6, SE Block, Hard-Swish Activation.
+  + Phù hợp với thiết bị IoT, di động, nhúng.
+
+- EfficientNet-Lite:
+  + Phiên bản rút gọn của EfficientNet tối ưu cho TensorFlow Lite và Edge TPU.
+  + Giữ hiệu năng cao, giảm kích thước mô hình đáng kể.
+  + Dùng rộng rãi trong ứng dụng edge: camera, robot, drone.
+
+- ConvNeXt (2022, Meta AI):
+  + CNN được thiết kế lại theo tinh thần Transformer.
+  + Loại bỏ BatchNorm dư thừa, dùng LayerNorm và Large Kernel (7×7).
+  + Đạt hiệu năng tương đương Swin Transformer nhưng nhanh hơn và nhẹ hơn.
+  + Đặt nền cho CNN thế hệ mới, kết hợp ưu điểm CNN và Transformer.
+
+CHƯƠNG 4: KỶ NGUYÊN TRANSFORMER TRONG THỊ GIÁC (THE TRANSFORMER ERA)
+
+4.1. TỪ BỎ TÍCH CHẬP: TẠI SAO CẦN MỘT KIẾN TRÚC MỚI?
+
+- CNN đã thống trị thị giác máy tính hơn một thập kỷ, nhưng có những giới hạn:
+  + Tính cục bộ (locality): convolution chỉ nhìn trong vùng nhỏ, khó nắm bắt quan hệ toàn cục giữa các vùng ảnh.
+  + Thiếu khả năng tổng quát hóa khi dữ liệu có sự thay đổi lớn về góc nhìn, bối cảnh.
+  + Cấu trúc cứng (fixed receptive field) → không linh hoạt khi mở rộng sang đa phương thức.
+- Transformer xuất phát từ NLP (Attention is All You Need, 2017), chứng minh khả năng học quan hệ dài hạn giữa các token.
+- Việc áp dụng Transformer vào thị giác mở ra kỷ nguyên “attention-based vision”:
+  + Không còn giới hạn bởi kernel 3×3.
+  + Có thể học tương quan giữa mọi pixel, mọi vùng.
+  + Phù hợp với xu hướng foundation models và học tự giám sát (self-supervised learning).
+
+
+4.2. VISION TRANSFORMER (ViT): BIẾN ẢNH THÀNH MỘT CHUỖI CÁC "TỪ"
+
+- ViT (Google Research, 2020) là mô hình Transformer đầu tiên đạt hiệu năng ngang hoặc vượt CNN trong Image Classification.
+- Ý tưởng cốt lõi:
+  + Chia ảnh đầu vào thành các "patch" (ví dụ: 16×16 pixel).
+  + Mỗi patch được “flatten” và chiếu tuyến tính thành vector embedding – tương tự một token trong NLP.
+  + Thêm một token đặc biệt [CLS] dùng để tổng hợp thông tin cho classification.
+  + Chuỗi token này đi qua các lớp Transformer Encoder để trích xuất đặc trưng toàn cục.
+
+4.2.1. PATCH EMBEDDING VÀ POSITIONAL ENCODING
+  + Patch Embedding: biến ảnh (H×W×C) thành N patch, mỗi patch được ánh xạ vào không gian d chiều (thường d=768).
+  + Positional Encoding: thêm thông tin vị trí cho từng patch, vì attention bản chất không có khái niệm không gian.
+  + Có thể là encoding tuyệt đối (sin-cos) hoặc học được (learnable position embedding).
+
+4.2.2. CƠ CHẾ SELF-ATTENTION CHO ẢNH
+  + Mỗi token tương tác với mọi token khác trong chuỗi để tính trọng số attention.
+  + Ba thành phần chính:
+    * Query (Q), Key (K), Value (V)
+    * Attention(Q,K,V) = Softmax(QKᵀ / √dₖ) × V
+  + Multi-Head Attention: mô hình học nhiều loại quan hệ không gian khác nhau song song.
+  + Kết quả: mỗi patch “nhìn thấy” toàn bộ ảnh, giúp ViT học được ngữ cảnh toàn cục tốt hơn CNN.
+
+
+4.3. CÁC BIẾN THỂ VÀ CẢI TIẾN: SWIN TRANSFORMER, DEIT
+
+- DeiT (Data-efficient Image Transformer, 2021, Facebook AI):
+  + Giải quyết vấn đề ViT cần lượng dữ liệu khổng lồ để huấn luyện.
+  + Dùng kiến trúc giống ViT nhưng thêm cơ chế Knowledge Distillation với teacher CNN.
+  + Giúp ViT hoạt động tốt trên dataset vừa phải như ImageNet-1K.
+
+- Swin Transformer (Shifted Window Transformer, 2021, Microsoft Research):
+  + Đưa khái niệm “cửa sổ trượt” (shifted window) vào self-attention.
+  + Chỉ tính attention trong vùng nhỏ (local window), nhưng có cơ chế dịch (shift) để kết nối thông tin giữa vùng.
+  + Giảm chi phí tính toán từ O(N²) → O(N).
+  + Trở thành backbone mạnh mẽ cho detection, segmentation, video understanding.
+  + Các biến thể: Swin-T, Swin-S, Swin-B, SwinV2.
+
+- PVT (Pyramid Vision Transformer, 2021):
+  + Thiết kế theo dạng kim tự tháp giống CNN, phù hợp với detection/segmentation.
+  + Cải thiện khả năng đa tỉ lệ (multi-scale feature).
+
+- CaiT, CvT, ViTDet: các nhánh tối ưu về training stability, efficiency và detection-specific adaptation.
+
+
+4.4. KIẾN TRÚC LAI CNN + TRANSFORMER (HYBRID MODELS)
+
+- Vì CNN và Transformer có ưu thế bổ sung nhau:
+  + CNN mạnh về học đặc trưng cục bộ, ít tốn tài nguyên.
+  + Transformer mạnh về ngữ cảnh toàn cục và khả năng mô hình hóa dài hạn.
+- Nhiều mô hình lai đã được đề xuất:
+  + ConvNeXt (2022): mô phỏng thiết kế ViT nhưng dùng convolution → kết hợp ưu điểm của hai thế giới.
+  + CoAtNet (2022, Google): kết hợp Conv + Attention theo chiều sâu.
+  + CMT (Convolutional Multi-head Transformer): trộn convolution vào block attention để giảm chi phí.
+  + LeViT, MobileViT: các biến thể nhỏ gọn cho Edge/Embedded AI.
+
+
+4.5. SO SÁNH ViT VÀ CNN: KHI NÀO NÊN DÙNG CÁI NÀO?
+
+- CNN:
+  + Phù hợp cho ứng dụng real-time, mobile, dữ liệu ít.
+  + Dễ triển khai, có nhiều công cụ tối ưu (TensorRT, TFLite).
+  + Ít yêu cầu tài nguyên huấn luyện.
+- ViT:
+  + Cần dữ liệu lớn và huấn luyện lâu hơn, nhưng khả năng khái quát vượt trội.
+  + Hiểu ngữ cảnh toàn ảnh, mạnh trong zero-shot, transfer learning.
+  + Dễ mở rộng sang multimodal (kết hợp text, audio...).
+- Hybrid CNN–ViT:
+  + Cân bằng hiệu năng và tốc độ, là xu hướng chính cho sản phẩm thương mại và Edge AI hiện nay.
+
+
+4.6. MÔ HÌNH THỊ GIÁC SOTA 2024–2025: EVA, CONVNEXT-V2, INTERNIMAGE, FOCALNET
+
+- EVA (2023, Microsoft):
+  + Vision Transformer huấn luyện quy mô lớn (EVA-02) với dữ liệu từ LAION và ImageNet-22K.
+  + Dẫn đầu trong ImageNet classification, detection, segmentation.
+
+- ConvNeXt-V2 (2023, Meta AI):
+  + Nâng cấp ConvNeXt bằng token mixer, inverted bottleneck và better normalization.
+  + Hiệu năng cạnh tranh với Swin và ViT, nhưng nhẹ hơn và dễ deploy hơn.
+
+- InternImage (2023, Shanghai AI Lab):
+  + Kết hợp Conv + deformable attention, đạt SOTA trên COCO, ADE20K.
+  + Được sử dụng làm backbone cho Grounding DINO và InternVL.
+
+- FocalNet (2024, Microsoft):
+  + Attention tập trung (focal) theo vùng cục bộ, cải thiện hiệu quả tính toán.
+  + Phù hợp với task segmentation, detection, video understanding.
+
+- Xu hướng 2025:
+  + Mô hình thống nhất (Unified Vision Model) cho nhiều nhiệm vụ: classification, detection, segmentation.
+  + Học tự giám sát quy mô lớn (self-distillation, masked pretraining).
+  + Tiến hóa sang mô hình đa phương thức (multimodal foundation) như CLIP, Kosmos-2, LLaVA, GPT-4o.
+
+CHƯƠNG 5: CÁC BÀI TOÁN CV CỐT LÕI & KIẾN TRÚC CHUYÊN BIỆT
+
+5.1. PHÁT HIỆN VẬT THỂ (OBJECT DETECTION)
+
+5.1.1. CNN-BASED: TỪ R-CNN ĐẾN YOLO VÀ SSD
+
+- R-CNN (2014, Girshick et al.)
+  + Đưa CNN lần đầu vào bài toán phát hiện vật thể.
+  + Pipeline gồm 3 giai đoạn: 
+    (1) Sinh vùng đề xuất bằng Selective Search.
+    (2) Dùng CNN (AlexNet) trích đặc trưng từng vùng.
+    (3) Phân loại bằng SVM + hiệu chỉnh bounding box bằng hồi quy tuyến tính.
+  + Ưu điểm: độ chính xác cao hơn hẳn các phương pháp dựa trên HOG, DPM.
+  + Nhược điểm: chậm (≈ 47 giây/ảnh), không end-to-end.
+
+- Fast R-CNN (2015)
+  + Cải thiện tốc độ: thay vì chạy CNN riêng cho từng vùng, chỉ cần forward toàn ảnh qua CNN một lần.
+  + Dùng ROI Pooling để trích đặc trưng vùng từ feature map.
+  + Đào tạo end-to-end (classification + regression).
+  + Tuy nhiên vẫn phụ thuộc vào Selective Search (không real-time).
+
+- Faster R-CNN (2016)
+  + Bổ sung Region Proposal Network (RPN) sinh vùng đề xuất trực tiếp trong CNN.
+  + Giảm mạnh thời gian suy luận (5–10 fps).
+  + Độ chính xác cao, vẫn là chuẩn vàng trong nhiều bài toán phát hiện vật thể công nghiệp và nghiên cứu.
+
+- SSD (Single Shot MultiBox Detector, 2016)
+  + Bỏ hoàn toàn bước đề xuất vùng (proposal-free).
+  + Dự đoán trực tiếp bounding box và class trên nhiều scale khác nhau của feature map.
+  + Tốc độ real-time (30–60 fps), nhưng độ chính xác thấp hơn Faster R-CNN trên các vật thể nhỏ.
+
+- YOLO (You Only Look Once, 2016–2025)
+  + Tư tưởng: detection là một bài toán hồi quy duy nhất (single shot).
+  + YOLOv1 → YOLOv9: liên tục cải tiến về backbone (Darknet → CSP → Efficient → Transformer hybrid).
+  + Các biến thể nổi bật:
+    * YOLOv3/v4: cân bằng tốt giữa tốc độ và độ chính xác.
+    * YOLOv5–v8: modular, huấn luyện linh hoạt, dễ tùy chỉnh.
+    * YOLOv9 (2024): tích hợp phương pháp visual consistency & programmable gradient flow.
+  + Ứng dụng phổ biến: surveillance, autonomous vehicles, retail analytics.
+
+- RetinaNet (2017)
+  + Giải quyết vấn đề mất cân bằng giữa positive/negative samples bằng “Focal Loss”.
+  + Cân bằng giữa tốc độ (gần SSD) và độ chính xác (gần Faster R-CNN).
+  + Được xem là mốc quan trọng trong single-stage detection.
+
+5.1.2. TRANSFORMER-BASED: DETR (DEtection TRansformer)
+  + Loại bỏ hoàn toàn anchor, RPN và NMS.
+  + Dùng cơ chế Attention để học trực tiếp mối quan hệ toàn cục giữa các vùng ảnh.
+  + DEtection TRansformer (DETR, Facebook AI, 2020):
+    * Input ảnh → CNN Backbone → Transformer Encoder-Decoder → prediction heads.
+    * Đơn giản hóa pipeline, nhưng cần thời gian huấn luyện dài.
+  + Các cải tiến: Deformable DETR, Conditional DETR, DINO-DETR giúp tăng tốc và cải thiện độ chính xác.
+
+5.1.3. YOLO THẾ HỆ MỚI: YOLO-NAS, YOLO-World (2023–2025)
+  + YOLO-NAS (2023, Deci AI): sử dụng Neural Architecture Search để tối ưu tự động cấu trúc backbone.
+  + YOLO-World (2024): mở rộng zero-shot detection, liên kết ngữ nghĩa với CLIP.
+  + Xu hướng “unified detector” – một mô hình duy nhất cho detection, segmentation, captioning.
+
+5.1.4. CÁC KIẾN TRÚC ANGLE-AWARE
+  + Phát hiện vật thể có góc quay (Rotated Object Detection) – quan trọng trong ảnh vệ tinh, OCR, công nghiệp.
+  + Bounding Box có góc quay (Rotated/Oriented Box).
+  + Circular Box cho vật thể tròn hoặc quay liên tục.
+  + So sánh Anchor-based (YOLOv3, Faster R-CNN) và Anchor-free (CenterNet, FCOS, YOLOX):
+    * Anchor-based: dễ ổn định khi huấn luyện, nhưng kém linh hoạt.
+    * Anchor-free: đơn giản, nhanh, phù hợp với real-time và mobile deployment.
+
+5.2. PHÂN ĐOẠN ẢNH (IMAGE SEGMENTATION)
+
+5.2.1. Semantic Segmentation (U-Net)
+  + U-Net: kiến trúc encoder–decoder đối xứng, đặc biệt mạnh trong y tế.
+  + Biến thể: U-Net++, DeepLab, SegFormer.
+
+5.2.2. Instance Segmentation (Mask R-CNN)
+  + Kế thừa Faster R-CNN, thêm nhánh dự đoán mặt nạ (mask branch).
+  + Dùng RoIAlign thay ROI Pooling để giữ chính xác không gian.
+  + Là chuẩn mực cho segmentation có đối tượng riêng biệt.
+
+5.2.3. Transformer Segmentation
+  + Segment Anything Model (SAM, Meta 2023): mô hình foundation cho segmentation, zero-shot.
+  + SEEM (2023): Segmentation Everything Everywhere All at Once.
+  + Mô hình đa nhiệm mới: OneFormer (2023), SAM 2 (2025) – unified segmentation model.
+
+5.3. CÁC BÀI TOÁN KHÁC: POSE ESTIMATION, OBJECT TRACKING
+  + Pose Estimation: phát hiện keypoints con người/vật thể (OpenPose, HRNet, ViTPose).
+  + Tracking hiện đại: ByteTrack, OC-SORT, DeepSORT, MOTChallenge 2024.
+
+5.4. DOMAIN ADAPTATION & GENERALIZATION TRONG CV THỰC TẾ
+  + Cần thiết khi triển khai trong môi trường khác biệt dữ liệu huấn luyện.
+  + Các kỹ thuật: adversarial adaptation, domain randomization, style transfer.
+  + Ứng dụng: autonomous driving, camera surveillance, robot vision.
+
+5.5. FOUNDATION MODELS CHO VISION TASKS
+  + Grounding DINO (2023): kết hợp CLIP + DETR cho detection có ngữ nghĩa.
+  + Florence (Microsoft, 2023): foundation multimodal vision model.
+  + Kosmos-2 (Microsoft, 2024): unified model cho captioning, grounding, VQA.
+  + Các xu hướng mới: multi-task, multi-modal pretraining, zero-shot visual reasoning.
+
+Chương 6: HỌC BIỂU DIỄN VÀ KỶ NGUYÊN DỮ LIỆU (REPRESENTATION LEARNING)
+6.1. Học Tự giám sát (Self-Supervised Learning)
+6.1.1. Các phương pháp Tương phản (Contrastive): SimCLR, MoCo
+6.1.2. Các phương pháp dựa trên Masking: Masked Autoencoders (MAE)
+6.2. Học Sâu Đo lường (Deep Metric Learning) và Tìm kiếm Ảnh
+6.3. AI Lấy Dữ liệu làm Trung tâm (Data-centric AI)
+6.4. Zero-shot, Few-shot Learning & Prompting Vision Models
+6.5. Học Liên tục (Continual / Lifelong Learning)
+6.6. Foundation Models as Representations: DINOv2, OpenCLIP, I-JEPA (Meta, 2023)
+
+Chương 7: CÁC MÔ HÌNH SINH VÀ SÁNG TẠO THỊ GIÁC
+7.1. GANs – Generative Adversarial Networks
+- 7.1.1. DCGAN, WGAN: các kiến trúc cơ bản
+- 7.1.2. StyleGAN và StyleGAN2/3
+- 7.1.3. Conditional GANs
+- 7.1.4. CycleGAN
+- 7.1.5. Các biến thể Supervised & Unsupervised
+7.2. Diffusion Models
+- 7.2.1. Lý thuyết cơ bản: DDPM, Denoising
+- 7.2.2. Latent Diffusion → Stable Diffusion
+- 7.2.3. Kỹ thuật điều khiển sinh ảnh: Textual Inversion, DreamBooth, ControlNet
+7.3. Text-to-Video Generative Models
+- 7.3.1. Sora
+- 7.3.2. Lumiere
+- 7.3.3. Pika Labs
+7.4. Neural Rendering & Dynamic 3D Scenes
+- 7.4.1. NeRF, Gaussian Splatting
+- 7.4.2. Dynamic scene generation
+- 7.4.3. 3D + 4D video synthesis
+7.5. Multimodal Generative Models
+- 7.5.1. Emu Video (Meta)
+- 7.5.2. Kling AI (2024)
+- 7.5.3. Các mô hình kết hợp text, video, 3D
+7.6. Video Diffusion dài hạn
+- 7.6.1. Vidu
+- 7.6.2. Runway Gen-3
+
+Chương 8: THỊ GIÁC ĐA PHƯƠNG THỨC
+8.1. CLIP: Kết nối Ảnh – Ngôn ngữ
+8.2. LVLMs: GPT-4o, LLaVA, Gemini
+8.3. Multimodal Foundation Models và Zero-shot
+8.4. Vision for Robotics, AR/VR, Edge Deployment
+8.5. Video-Language Models: LLaVA-Next, VILA, InternVid
+
+PHẦN II: CẨM NANG KỸ THUẬT CV THỰC CHIẾN
+
+Chương 1: QUY TRÌNH LÀM VIỆC VÀ CÔNG CỤ XỬ LÝ DỮ LIỆU
+1.1. Phác thảo Quy trình Dự án CV Tinh gọn
+1.2. Kỹ thuật Thu thập và Gán nhãn Dữ liệu
+1.2.1. Tìm kiếm và sử dụng các bộ dữ liệu công khai
+1.2.2. Web Scraping ảnh
+1.2.3. Các công cụ gán nhãn: LabelImg, CVAT, Labelbox
+1.3. Tiền xử lý và Tăng cường Dữ liệu (Augmentation)
+1.3.1. Các thư viện phổ biến: OpenCV, Pillow
+1.3.2. Kỹ thuật tăng cường dữ liệu với Albumentations
+1.4. Quản lý Dữ liệu và Phiên bản với DVC
+
+Chương 2: HUẤN LUYỆN VÀ ĐÁNH GIÁ MÔ HÌNH
+2.1. Thiết lập Môi trường với PyTorch và TensorFlow/Keras
+2.1.1. Giới thiệu torchvision và tf.keras.applications
+2.1.2. Sử dụng GPU và các thư viện CUDA, cuDNN
+2.2. Các thư viện phổ biến khác: timm, Hugging Face transformers cho ViT
+2.3. Kỹ thuật Đánh giá Thực tế
+2.3.1. Xây dựng vòng lặp đánh giá (evaluation loop)
+2.3.2. Trực quan hóa kết quả: Ma trận nhầm lẫn, vẽ bounding box, mặt nạ segmentation
+2.4. Theo dõi và Quản lý Thí nghiệm với Weights & Biases (W&B)
+2.5. Huấn luyện Phân tán trên nhiều GPU
+2.6. Fine-tuning SOTA: LoRA, QLoRA, Parameter-Efficient Fine-Tuning cho Vision Models
+2.7. Synthetic Data trong huấn luyện CV: GenAI for Data (Datagen, Synthesis AI)
+
+Chương 3: TỐI ƯU HÓA, TRIỂN KHAI VÀ VẬN HÀNH (MLOps)
+3.1. Tối ưu hóa Mô hình cho Suy luận (Inference)
+3.1.1. Lượng tử hóa (Quantization) và Cắt tỉa (Pruning)
+3.1.2. Chuyển đổi sang ONNX và TensorRT
+3.1.3. Distillation & Model Compression cho Foundation Models
+3.2. Đóng gói và Phục vụ Mô hình
+3.2.1. Xây dựng API với FastAPI
+3.2.2. Container hóa với Docker
+3.3. Các Framework Phục vụ Chuyên dụng
+3.3.1. NVIDIA Triton Inference Server
+3.3.2. BentoML
+3.4. Vòng đời MLOps cho các ứng dụng CV
+3.5. Triển khai trên Edge & Mobile (CoreML, TensorFlow Lite, NVIDIA Jetson)
+
+Chương 4: CÔNG THỨC XÂY DỰNG CÁC ỨNG DỤNG PHỔ BIẾN (RECIPES)
+4.1. Recipe 1: Xây dựng một Hệ thống Phân loại Ảnh (ví dụ: Chó và Mèo)
+4.2. Recipe 2: Xây dựng một Hệ thống Phát hiện Vật thể tùy chỉnh với YOLO
+4.3. Recipe 3: Xây dựng một Hệ thống Phân đoạn Ảnh (ví dụ: phân đoạn đường đi)
+4.4. Recipe 4: Tạo ảnh nghệ thuật từ văn bản với Stable Diffusion
+4.5. Recipe 5: Xây dựng một ứng dụng Webcam thời gian thực (ví dụ: nhận diện vật thể)
+4.6. Recipe 6: Xây dựng một Chatbot có khả năng "nhìn" và mô tả ảnh
+4.7. Recipe 7: Ứng dụng Tìm kiếm đa phương thức (Image-to-Text & Text-to-Image Search với CLIP)
+4.8. Recipe 8: Xây dựng một trợ lý thị giác (Vision Assistant) dựa trên LVLM

@@ -1,0 +1,96 @@
+\section{So sánh ViT và CNN: Khi nào nên dùng cái nào?}
+\label{sec:vit_vs_cnn_comparison}
+
+\subsection{Giới thiệu}
+\label{subsec:comparison_intro}
+Sau hơn một thập kỷ phát triển kể từ bước đột phá của AlexNet, Mạng Nơ-ron Tích chập (CNN) đã trở thành trụ cột không thể thay thế của thị giác máy tính. Tuy nhiên, sự xuất hiện của Vision Transformer (ViT) vào năm 2020 đã tạo ra một cuộc đối đầu thú vị giữa hai trường phái kiến trúc. Một bên là CNN, với triết lý xây dựng đặc trưng từ các tương tác cục bộ. Bên còn lại là ViT, với cách tiếp cận hoàn toàn mới, dựa trên cơ chế chú ý toàn cục (global self-attention) được kế thừa từ lĩnh vực xử lý ngôn ngữ.
+
+Mặc dù cả hai kiến trúc đều hướng đến cùng một mục tiêu cuối cùng là trích xuất các biểu diễn hình ảnh (image representations) mạnh mẽ, nhưng chúng đạt được điều đó bằng những con đường triết học và toán học rất khác nhau. Sự khác biệt này dẫn đến những ưu, nhược điểm riêng biệt, khiến cho việc lựa chọn giữa chúng trở thành một quyết định quan trọng trong thiết kế hệ thống. Phần này sẽ cung cấp một so sánh chi tiết giữa CNN, ViT và các mô hình lai, đồng thời đưa ra những hướng dẫn thực tiễn để lựa chọn kiến trúc phù hợp cho từng bối cảnh ứng dụng.
+
+\subsection{Đánh giá Mạng Nơ-ron Tích chập (CNN)}
+\label{subsec:cnn_evaluation}
+
+\subsubsection{Ưu điểm}
+\label{subsubsec:cnn_advantages}
+\begin{description}
+	\item[Thiên kiến quy nạp (Inductive Bias) mạnh mẽ:] Đây là lợi thế lớn nhất của CNN. Hai thiên kiến cốt lõi là \textbf{tính cục bộ (locality)} và \textbf{bất biến với tịnh tiến (translation equivariance)} phản ánh chính xác bản chất của thế giới tự nhiên.
+	\begin{itemize}
+		\item \textbf{Tính cục bộ:} Giả định rằng các pixel gần nhau có mối quan hệ ngữ nghĩa mạnh mẽ hơn các pixel ở xa. Điều này cho phép kernel tích chập tập trung vào việc học các mẫu cục bộ (cạnh, góc, kết cấu) một cách hiệu quả.
+		\item \textbf{Bất biến với tịnh tiến:} Việc chia sẻ trọng số (weight sharing) của kernel trên toàn bộ ảnh giúp CNN có thể nhận ra một đối tượng bất kể nó xuất hiện ở đâu.
+	\end{itemize}
+	Những thiên kiến "bẩm sinh" này giúp CNN học hiệu quả hơn, đặc biệt khi dữ liệu bị hạn chế.
+	
+	\item[Hiệu quả về Dữ liệu và Tính toán:] Do có thiên kiến mạnh, CNN không cần phải "học lại từ đầu" các quy luật cơ bản của không gian. Điều này giúp chúng có thể đạt được hiệu năng tốt ngay cả khi được huấn luyện trên các bộ dữ liệu tương đối nhỏ (vài nghìn đến vài chục nghìn ảnh). Hơn nữa, phép tích chập đã được tối ưu hóa ở mức độ phần cứng (trên GPU với cuDNN, trên CPU với các thư viện MKL/oneDNN), giúp tốc độ huấn luyện và suy luận rất nhanh.
+	
+	\item[Kiến trúc Phân cấp (Hierarchical Architecture):] Cấu trúc xếp chồng các lớp Conv-Pool tạo ra các bản đồ đặc trưng đa tỷ lệ một cách tự nhiên. Điều này cực kỳ hữu ích cho các tác vụ dày đặc (dense prediction) như phát hiện vật thể và phân đoạn ảnh.
+\end{description}
+
+\subsubsection{Hạn chế}
+\label{subsubsec:cnn_disadvantages}
+\begin{description}
+	\item[Hạn chế trong việc Mô hình hóa Quan hệ Tầm xa:] Chính thiên kiến về tính cục bộ lại là gót chân Achilles của CNN. Trường thụ cảm (receptive field) của một nơ-ron chỉ có thể mở rộng một cách từ từ qua nhiều lớp, khiến việc nắm bắt mối quan hệ trực tiếp giữa các vùng ảnh xa nhau trở nên khó khăn và kém hiệu quả.
+	\item[Trọng số Tĩnh, Thiếu Thích ứng với Nội dung:] Các kernel của CNN là tĩnh sau khi huấn luyện. Chúng áp dụng cùng một bộ trọng số cho mọi vùng ảnh, không có khả năng "tập trung" vào các khu vực quan trọng hơn tùy thuộc vào nội dung của ảnh.
+\end{description}
+
+\begin{mdframed}[style=infobox]
+	\textbf{Khi nào CNN tỏa sáng?}
+	
+	CNN vẫn là lựa chọn hàng đầu cho các ứng dụng đòi hỏi \textbf{tốc độ suy luận thời gian thực}, các hệ thống \textbf{chạy trên thiết bị biên (Edge AI, mobile)}, hoặc khi \textbf{dữ liệu huấn luyện bị hạn chế}.
+\end{mdframed}
+
+\subsection{Đánh giá Vision Transformer (ViT)}
+\label{subsec:vit_evaluation}
+
+\subsubsection{Ưu điểm}
+\label{subsubsec:vit_advantages_eval}
+\begin{description}
+	\item[Năng lực Hiểu Ngữ cảnh Toàn cục:] Đây là siêu năng lực của ViT. Cơ chế self-attention cho phép mỗi patch trong ảnh tương tác trực tiếp với tất cả các patch khác ngay từ lớp đầu tiên. Điều này mang lại cho ViT khả năng lý luận toàn cục vượt trội, giúp nó hiểu được bối cảnh và các mối quan hệ ngữ nghĩa phức tạp trong một bức ảnh.
+	\item[Khả năng Mở rộng (Scalability) và Hiệu năng Đỉnh cao:] Khi được cung cấp đủ dữ liệu, hiệu năng của ViT tăng trưởng rất tốt theo quy mô của mô hình (từ ViT-Base đến ViT-Huge và lớn hơn). Do có ít thiên kiến hơn, ViT có khả năng học các biểu diễn trừu tượng và mạnh mẽ hơn, thường dẫn đến hiệu năng tổng quát hóa (generalization) tốt hơn trên các bộ dữ liệu lớn.
+	\item[Kiến trúc Thống nhất cho Kỷ nguyên Đa phương thức:] Transformer cung cấp một "ngôn ngữ chung" để xử lý nhiều loại dữ liệu (văn bản, hình ảnh, âm thanh). Điều này đã biến ViT trở thành nền tảng không thể thiếu cho các \textbf{mô hình nền tảng (foundation models)} đa phương thức, như CLIP (kết hợp ảnh và văn bản) hay các mô hình như DINOv2 và Segment Anything Model (SAM).
+\end{description}
+
+\subsubsection{Hạn chế}
+\label{subsubsec:vit_disadvantages_eval}
+\begin{description}
+	\item[Đói Dữ liệu (Data-Hungry):] Việc thiếu thiên kiến quy nạp về không gian khiến ViT phải "học từ con số không". Nó cần một lượng dữ liệu khổng lồ (thường là hàng chục đến hàng trăm triệu ảnh) để có thể tự khám phá ra các quy luật thị giác cơ bản mà CNN có sẵn.
+	\item[Tốn kém về Tài nguyên Tính toán:] Cơ chế self-attention toàn cục có độ phức tạp tính toán bậc hai ($O(N^2)$) theo số lượng patch, khiến việc huấn luyện và suy luận trên các ảnh có độ phân giải cao trở nên rất tốn kém.
+\end{description}
+
+\begin{mdframed}[style=infobox]
+	\textbf{Khi nào ViT là lựa chọn tối ưu?}
+	
+	ViT và các biến thể của nó là lựa chọn lý tưởng khi mục tiêu là \textbf{đạt được độ chính xác cao nhất có thể}, khi có \textbf{dữ liệu quy mô lớn} và \textbf{hạ tầng tính toán mạnh mẽ}. Chúng đặc biệt tỏa sáng trong các kịch bản \textbf{học chuyển giao (transfer learning)} và là nền tảng cho các \textbf{mô hình đa phương thức, đa nhiệm}.
+\end{mdframed}
+
+\begin{center}
+	\includegraphics[width=0.9\textwidth]{images/cnn_vs_vit_performance_datasize.png}
+	\captionof{figure}{So sánh hiệu năng của CNN (ResNet) và ViT theo quy mô dữ liệu huấn luyện. Trên các bộ dữ liệu nhỏ (như ImageNet-1K), CNN có hiệu năng tốt hơn nhờ thiên kiến quy nạp. Tuy nhiên, khi được huấn luyện trước trên các bộ dữ liệu rất lớn (như JFT-300M), ViT thể hiện khả năng mở rộng vượt trội và đạt hiệu năng cao hơn.}
+	\label{fig:cnn_vs_vit_performance}
+\end{center}
+% Keyword gợi ý: cnn vs vit performance data size, resnet vs vit imagenet
+
+\subsection{Mô hình Lai: Sự Cân bằng Thực tiễn}
+\label{subsec:hybrid_model_balance}
+Nhận thấy các ưu và nhược điểm của CNN và ViT có tính bổ sung cho nhau, các kiến trúc lai (hybrid) đã ra đời như một giải pháp thực tiễn, kết hợp những gì tốt nhất của cả hai thế giới.
+\begin{itemize}
+	\item \textbf{Động cơ:} Tận dụng khả năng xử lý đặc trưng cục bộ hiệu quả của CNN ở các tầng đầu (khi ảnh còn ở độ phân giải cao) và khai thác khả năng lý luận toàn cục của Transformer ở các tầng sau (khi feature map đã trở nên giàu ngữ nghĩa hơn).
+	\item \textbf{Đặc điểm:} Các mô hình lai như CoAtNet, ConvNeXt, hay MobileViT thường có cấu trúc phân cấp, hiệu quả về tính toán, và đạt được sự cân bằng xuất sắc giữa độ chính xác và tốc độ.
+\end{itemize}
+Các mô hình lai hiện đang là lựa chọn phổ biến nhất cho các hệ thống thị giác trong sản phẩm thương mại và các ứng dụng Edge AI, nơi sự cân bằng giữa hiệu năng và tài nguyên là yếu tố quyết định.
+
+\subsection{Kết luận: Một Tương lai Hợp nhất}
+\label{subsec:unified_future_conclusion}
+Cuộc đối đầu giữa CNN và Transformer đã thúc đẩy một thập kỷ đổi mới trong kiến trúc thị giác. Tuy nhiên, tương lai có lẽ không thuộc về một phe duy nhất. Thay vào đó, chúng ta đang chứng kiến một sự hội tụ, nơi ranh giới giữa hai trường phái ngày càng mờ đi.
+
+Các kiến trúc hiện đại như ConvNeXt-V2, hay các mô hình lai hiệu quả như EdgeNeXt, đang tiếp tục hòa trộn những ý tưởng tốt nhất từ cả hai thế giới. Chúng ta học được rằng thiên kiến về tính cục bộ vẫn cực kỳ hữu ích, nhưng khả năng lý luận toàn cục của self-attention là không thể thiếu để đạt đến một tầm cao mới của sự "thấu hiểu" thị giác.
+
+Do đó, CNN và ViT không nên được xem là đối thủ loại trừ nhau, mà là hai công cụ mạnh mẽ trong bộ dụng cụ của một kỹ sư thị giác máy tính, mỗi công cụ có thế mạnh riêng và khi được kết hợp một cách thông minh, chúng tạo ra những giải pháp toàn diện và mạnh mẽ nhất.
+
+\section*{Tài liệu tham khảo}
+\begin{itemize}
+	\item[1] Dosovitskiy, A., Beyer, L., Kolesnikov, A., Weissenborn, D., Zhai, X., Unterthiner, T., ... \& Houlsby, N. (2020). An image is worth 16x16 words: Transformers for image recognition at scale. \textit{arXiv preprint arXiv:2010.11929}. (Paper gốc về ViT, đặt ra sự so sánh trực tiếp với các kiến trúc CNN).
+	\item[2] He, K., Zhang, X., Ren, S., \& Sun, J. (2016). Deep residual learning for image recognition. In \textit{Proceedings of the IEEE conference on computer vision and pattern recognition (CVPR)}. (Đại diện tiêu biểu cho kiến trúc CNN hiện đại).
+	\item[3] Liu, Z., Mao, H., Wu, C. Y., Feichtenhofer, C., Darrell, T., \& Xie, S. (2022). A convnet for the 2020s. In \textit{Proceedings of the IEEE/CVF conference on computer vision and pattern recognition (CVPR)}. (Paper về ConvNeXt, một ví dụ điển hình của việc kết hợp triết lý thiết kế từ cả hai trường phái).
+	\item[4] Dai, Z., Liu, H., Le, Q. V., \& Tan, M. (2021). Coatnet: Marrying convolution and attention for all data sizes. In \textit{Advances in Neural Information Processing Systems (NeurIPS)}. (Một ví dụ về kiến trúc lai tuần tự hiệu quả).
+	\item[5] Radford, A., Kim, J. W., Hallacy, C., Ramesh, A., Goh, G., Agarwal, S., ... \& Sutskever, I. (2021). Learning transferable visual models from natural language supervision. In \textit{International Conference on Machine Learning (ICML)}. (Ví dụ về sức mạnh của kiến trúc Transformer trong các tác vụ đa phương thức và học tổng quát).
+\end{itemize}

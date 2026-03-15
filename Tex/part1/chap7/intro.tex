@@ -1,0 +1,24 @@
+\chapter{Các Mô hình Sinh và Sáng tạo Thị giác}
+\label{chap:generative_models}
+%----------------------------------------------------------------------------------------
+%	INTRODUCTION
+%----------------------------------------------------------------------------------------
+
+Từ những chương đầu tiên, hành trình của chúng ta trong thế giới thị giác máy tính chủ yếu xoay quanh việc \textit{thấu hiểu} và \textit{phân tích}. Chúng ta đã huấn luyện các mô hình để nhận dạng (classification), định vị (detection), và phân tách (segmentation) thế giới thị giác—về cơ bản là dạy máy tính cách "nhìn" và diễn giải những gì đã có. Nhưng có một khía cạnh khác của trí thông minh, một năng lực mà từ lâu được xem là độc quyền của con người: khả năng \textbf{sáng tạo}.
+
+Điều gì sẽ xảy ra nếu thay vì chỉ phân tích, chúng ta có thể dạy máy tính cách \textit{tưởng tượng} và \textit{tổng hợp} ra những hình ảnh và video hoàn toàn mới, những thế giới chưa từng tồn tại?
+
+Chương này sẽ đưa chúng ta vào một lãnh địa kỳ diệu và đầy biến đổi của thị giác máy tính: \textbf{các mô hình sinh (generative models)}. Đây không còn là cuộc chơi của việc nhận dạng, mà là nghệ thuật của sự sáng tạo. Chúng ta sẽ khám phá những thuật toán có khả năng học được "phân phối xác suất" của dữ liệu thị giác—nói cách khác, chúng học được "ngữ pháp" tạo nên một bức ảnh chân dung, một khung cảnh thiên nhiên, hay một video về một chú chó đang chạy—và sau đó sử dụng ngữ pháp đó để tạo ra những tác phẩm mới.
+
+Cuộc cách mạng sáng tạo này đã diễn ra qua nhiều làn sóng, và chúng ta sẽ lần theo dấu chân của từng cuộc cách mạng đó:
+\begin{itemize}
+	\item Chúng ta sẽ bắt đầu với \textbf{Mạng Sinh đối nghịch (Generative Adversarial Networks - GANs)}, một ý tưởng thiên tài về một trò chơi "mèo vờn chuột" giữa hai mạng nơ-ron: một "Họa sĩ" (Generator) cố gắng vẽ ra những bức ảnh giả ngày càng giống thật, và một "Nhà phê bình" (Discriminator) cố gắng phân biệt giữa thật và giả. Cuộc đối đầu này đã đẩy khả năng sinh ảnh lên một tầm cao mới, với các mô hình như \textbf{StyleGAN} có khả năng tạo ra những khuôn mặt người siêu thực.
+	
+	\item Tiếp theo, chúng ta sẽ chứng kiến sự trỗi dậy của một mô thức mới đã làm lu mờ cả GANs: \textbf{các Mô hình Khuếch tán (Diffusion Models)}. Lấy cảm hứng từ nhiệt động lực học, các mô hình này học cách "khử nhiễu" một cách từ từ để biến một mớ hỗn độn ngẫu nhiên thành một hình ảnh mạch lạc và chi tiết. Chính công nghệ này là nền tảng đằng sau các công cụ tạo ảnh từ văn bản (text-to-image) gây chấn động như \textbf{Stable Diffusion} và \textbf{Midjourney}, cho phép bất kỳ ai cũng có thể trở thành một "họa sĩ" chỉ bằng vài dòng mô tả.
+	
+	\item Từ ảnh tĩnh, chúng ta sẽ tiến vào thế giới của chuyển động với các mô hình \textbf{Text-to-Video}. Chúng ta sẽ khám phá những công nghệ đột phá đằng sau các mô hình gây kinh ngạc như \textbf{Sora} của OpenAI, có khả năng tạo ra các đoạn video siêu thực, động và có cốt truyện chỉ từ một câu lệnh.
+	
+	\item Và vượt ra ngoài không gian 2D, chúng ta sẽ bước vào thế giới 3D với \textbf{Neural Rendering}. Các công nghệ như \textbf{NeRFs} và \textbf{Gaussian Splatting} đang thay đổi cách chúng ta tái tạo và tổng hợp các khung cảnh 3D từ một vài bức ảnh, mở đường cho một tương lai của metaverse, thực tế ảo, và các cặp song sinh kỹ thuật số (digital twins).
+\end{itemize}
+
+Chương này không chỉ là một chuyến tham quan các thuật toán. Nó là một cuộc khám phá về ranh giới giữa nhận thức và sáng tạo, giữa thực tế và tưởng tượng. Các mô hình sinh đang thay đổi không chỉ ngành công nghiệp sáng tạo, mà còn cả cách chúng ta nghĩ về bản chất của trí thông minh. Hãy cùng bước vào thế giới nơi máy móc không chỉ học cách nhìn, mà còn học cách mơ.

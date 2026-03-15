@@ -1,0 +1,23 @@
+\chapter{Xử lý Ảnh Nền tảng \& Trích xuất Đặc trưng Cổ điển}
+\label{chap:classical_vision}
+
+Nếu chương đầu tiên đã mở ra cánh cửa dẫn vào thế giới thị giác của máy móc, thì chương này chính là nơi chúng ta bắt đầu học những "câu thần chú" đầu tiên. Trước khi các mạng nơ-ron sâu với hàng tỷ tham số có thể tự động học cách diễn giải một bức ảnh trong chớp mắt, các nhà tiên phong trong lĩnh vực Thị giác Máy tính đã phải làm một công việc tỉ mỉ hơn rất nhiều. Họ là những người thợ thủ công, những nhà giả kim thuật của kỷ nguyên số, đã phải tự mình rèn giũa nên những công cụ để mổ xẻ một bức ảnh, tìm kiếm những cấu trúc ẩn giấu, và chưng cất chúng thành những "đặc trưng" (features) mang ý nghĩa.
+
+Đây là kỷ nguyên của các thuật toán được \textbf{chế tác thủ công (handcrafted)}. Mỗi thuật toán là một sự kết tinh của trực giác con người, sự chặt chẽ của toán học, và sự thấu hiểu sâu sắc về bản chất của tín hiệu hình ảnh. Chúng ta sẽ không tìm hiểu về chúng như những di tích lịch sử, mà như những nguyên lý nền tảng, những khối xây dựng cơ bản mà ngay cả các kiến trúc hiện đại nhất cũng đang đứng trên vai. Hiểu được chúng chính là hiểu được "ngữ pháp" của ngôn ngữ thị giác.
+
+Hành trình của chúng ta trong chương này sẽ bắt đầu từ những thao tác cơ bản nhất. Chúng ta sẽ học cách nhìn một bức ảnh không phải như một tác phẩm nghệ thuật, mà như một bề mặt toán học, và áp dụng lên đó các \textbf{phép toán và bộ lọc}. Giống như một người thợ điêu khắc, chúng ta sẽ học cách làm mờ để loại bỏ những chi tiết nhiễu, làm sắc nét để nhấn mạnh các đường viền, và quan trọng nhất, làm thế nào để máy tính có thể "nhìn thấy" được các đường biên—những ranh giới vô hình đã tạo nên hình dạng của mọi vật thể.
+
+Từ những đường biên đó, chúng ta sẽ tiến một bước đến việc tìm kiếm những điểm có ý nghĩa hơn: các \textbf{điểm đặc trưng (keypoints)}. Tại sao một góc của tòa nhà hay một đốm sáng trên một vật thể lại mang nhiều thông tin hơn một vùng tường phẳng? Chúng ta sẽ khám phá các thuật toán kinh điển có khả năng tự động tìm ra những "điểm neo" này trong một bức ảnh, những điểm có khả năng nhận dạng lại được ngay cả khi ảnh bị xoay, thu phóng, hay thay đổi ánh sáng.
+
+Và cuối cùng, chúng ta sẽ đi đến đỉnh cao của kỷ nguyên cổ điển: các \textbf{bộ mô tả đặc trưng (feature descriptors)} như SIFT, SURF, và HOG. Đây là những công trình trí tuệ đáng kinh ngạc, những thuật toán có khả năng biến một vùng ảnh nhỏ xung quanh một điểm đặc trưng thành một "dấu vân tay" số học. Dấu vân tay này đủ độc nhất để phân biệt một vật thể này với vật thể khác, và đủ bền bỉ để tồn tại qua những biến đổi của thế giới thực. Chúng chính là cầu nối giữa dữ liệu pixel thô và các khái niệm trừu tượng.
+
+Trong chương này, chúng ta sẽ cùng nhau:
+\begin{itemize}
+	\item Khám phá \textbf{phép tích chập (convolution)} như một công cụ vạn năng cho các phép lọc ảnh cơ bản.
+	\item Nắm vững các kỹ thuật để \textbf{phát hiện các cấu trúc cơ bản} như đường biên, góc, và các vùng có hình dạng đặc biệt.
+	\item Đi sâu vào logic đằng sau các \textbf{thuật toán trích xuất đặc trưng thủ công} kinh điển, hiểu rõ điểm mạnh, điểm yếu và lý do chúng ra đời.
+	\item Tìm hiểu cách các đặc trưng này được \textbf{biểu diễn và so khớp} để giải quyết các bài toán thực tế như tìm kiếm ảnh và nhận dạng.
+	\item Phân tích những \textbf{hạn chế cố hữu} của cách tiếp cận thủ công và vai trò lịch sử của nó như một bước đệm cho cuộc cách mạng học sâu.
+\end{itemize}
+
+Chương này là một khóa học cấp tốc về các công cụ nền tảng. Nắm vững chúng không chỉ giúp bạn hiểu được một nửa lịch sử của Thị giác Máy tính, mà còn cung cấp một trực giác vật lý và toán học vô giá để có thể thực sự thấu hiểu tại sao các phương pháp học sâu lại mạnh mẽ đến vậy. Hãy cùng bắt đầu rèn giũa những công cụ đầu tiên.

@@ -1,0 +1,142 @@
+\section{Kiến trúc Lai CNN + Transformer (Hybrid Models)}
+\label{sec:hybrid_cnn_transformer}
+
+\subsection{Tổng quan}
+Trong giai đoạn 2020–2022, cộng đồng thị giác máy tính chứng kiến một làn sóng tranh luận sôi nổi giữa hai trường phái kiến trúc: \textbf{Convolutional Neural Networks (CNN)} và \textbf{Vision Transformers (ViT)}.  
+CNN đã chứng minh hiệu quả vượt trội trong hai thập kỷ nhờ \textit{thiên kiến quy nạp không gian} (spatial inductive bias) — tính cục bộ, chia sẻ trọng số, và bất biến dịch (translation invariance). Trong khi đó, Transformer mang lại khả năng \textbf{mô hình hóa quan hệ toàn cục} (global dependency modeling) mà CNN truyền thống không làm được.
+
+Tuy nhiên, hai hướng này không hề đối nghịch tuyệt đối. CNN mạnh ở việc trích xuất các đặc trưng thấp (low-level features) với chi phí thấp, còn Transformer lại nổi bật trong việc lý luận ở mức ngữ nghĩa cao.  
+Sự bổ sung tự nhiên này dẫn đến một xu hướng tất yếu: kết hợp hai thế giới trong một kiến trúc thống nhất — \textbf{Hybrid CNN–Transformer Models}.
+
+---
+
+\subsection{Phân tích Bổ sung giữa CNN và Transformer}
+\label{subsec:why_hybrid_models}
+
+\textbf{1. Thiên kiến quy nạp (Inductive Bias):}  
+CNN mang thiên kiến mạnh về tính cục bộ và bất biến dịch, giúp mô hình học ổn định hơn trong điều kiện dữ liệu giới hạn.  
+Ngược lại, Transformer có rất ít thiên kiến, cho phép học linh hoạt hơn khi có nhiều dữ liệu, nhưng dễ overfit nếu dữ liệu ít.
+
+\textbf{2. Độ phức tạp tính toán:}  
+Self-attention có độ phức tạp $O(N^2)$ theo số lượng patch $N$, khiến Transformer thuần túy không hiệu quả ở các tầng đầu có độ phân giải cao.  
+CNN, với tính cục bộ của kernel, chỉ có độ phức tạp $O(N)$ và rất phù hợp để giảm kích thước không gian ở giai đoạn đầu.
+
+\textbf{3. Receptive Field và Ngữ cảnh:}  
+Receptive field trong CNN tăng dần theo chiều sâu, trong khi Transformer nắm bắt ngữ cảnh toàn cục ngay từ tầng đầu.  
+Kết hợp hai cơ chế này giúp mô hình học được cả thông tin cục bộ và toàn cục một cách tự nhiên.
+
+---
+
+\subsection{Các Chiến lược Lai hóa}
+\label{subsec:hybrid_strategies}
+
+Có hai hướng chính khi thiết kế các mô hình lai:
+
+\begin{enumerate}
+	\item \textbf{Lai tuần tự (Sequential / Hierarchical Hybrid):}  
+	Các tầng CNN được đặt ở đầu mạng để mã hóa đặc trưng cục bộ và giảm độ phân giải, sau đó chuyển sang Transformer để xử lý quan hệ toàn cục.  
+	Ví dụ: \textbf{CoAtNet} \cite{Dai2021}, \textbf{CeiT} \cite{Yuan2021CeiT}, \textbf{CvT} \cite{Wu2021}.
+	
+	\item \textbf{Lai tích hợp (Integrated Hybrid):}  
+	CNN và Transformer được trộn trong cùng một khối. Ví dụ, thêm convolution vào các phép chiếu $Q,K,V$ của attention (CvT), hoặc chèn một mini-Transformer vào giữa các khối tích chập (MobileViT).  
+	Các mô hình như \textbf{MobileViT}, \textbf{EdgeViT} hay \textbf{EfficientViT} là đại diện tiêu biểu.
+\end{enumerate}
+
+---
+
+\subsection{CoAtNet (2021): Hợp nhất Convolution và Attention}
+\label{subsec:coatnet}
+
+\textbf{CoAtNet} (viết tắt của \textit{Convolution and Self-Attention Network}) \cite{Dai2021} là một trong những mô hình lai đầu tiên đạt hiệu năng vượt trội ở cả hai miền dữ liệu nhỏ và lớn.  
+Triết lý của CoAtNet là \textit{“dùng tích chập để tăng bias, dùng attention để tăng capacity”}.
+
+\textbf{Cấu trúc kiến trúc:}  
+Mạng được chia thành nhiều stage:
+\begin{itemize}
+	\item \textbf{Stage S0–S1:} sử dụng các khối MBConv (từ EfficientNet) để xử lý ảnh ở độ phân giải cao.
+	\item \textbf{Stage S2–S4:} chuyển dần sang Transformer blocks với cơ chế \textbf{relative self-attention} để duy trì khả năng tổng quát hóa không gian.
+\end{itemize}
+
+\textbf{Đặc điểm kỹ thuật:}
+\begin{itemize}
+	\item \textbf{Relative Self-Attention:} dùng khoảng cách tương đối giữa các patch thay vì vị trí tuyệt đối, giúp mô hình hóa tốt hơn cấu trúc không gian.  
+	\item \textbf{Depth Scaling:} tăng dần độ sâu Transformer theo từng stage tương tự mô hình kim tự tháp.
+	\item \textbf{Cân bằng Bias–Capacity:} các stage đầu thiên về bias (tích chập), stage sau thiên về capacity (attention), giúp tối ưu hóa cho mọi quy mô dữ liệu.
+\end{itemize}
+
+\textbf{Kết quả:} CoAtNet đạt top-1 accuracy 86.0\% trên ImageNet-1K và vượt Swin Transformer trong phát hiện vật thể COCO, chứng minh khả năng tổng quát vượt trội.
+
+---
+
+\subsection{MobileViT (2021): Transformer cho Thiết bị Di động}
+\label{subsec:mobilevit}
+
+\textbf{MobileViT} \cite{Mehta2021} của Apple giải quyết bài toán khác: làm sao đưa khả năng lý luận toàn cục của Transformer vào mô hình nhỏ gọn, phù hợp với thiết bị biên (Edge AI).
+
+\textbf{Ý tưởng chính:} xem Transformer như một phép “tích chập toàn cục”.  
+Một khối \textbf{MobileViT Block} gồm ba pha:
+\begin{enumerate}
+	\item CNN học đặc trưng cục bộ qua các lớp $3\times3$ và $1\times1$.
+	\item Feature map được chia thành patch và đưa qua Transformer để học ngữ cảnh toàn cục.
+	\item Kết quả được gấp lại (fold) và hợp nhất với feature ban đầu.
+\end{enumerate}
+
+\textbf{Hiệu quả:}  
+MobileViT-S chỉ có 5.6M tham số nhưng đạt 78.4\% accuracy trên ImageNet, vượt MobileNetV3-Large, chứng minh tính hiệu quả của sự lai hóa tích hợp.
+
+---
+
+\subsection{ConvNeXt (2022): Khi CNN học từ Transformer}
+\label{subsec:convnext_as_hybrid}
+
+\textbf{ConvNeXt} \cite{Liu2022} không phải là mô hình lai về mặt cấu trúc, mà là kết quả của việc \textbf{“Transformer hóa”} một CNN truyền thống.  
+Bắt đầu từ ResNet-50, nhóm tác giả tại Meta AI áp dụng dần các yếu tố thiết kế của Swin Transformer:
+\begin{itemize}
+	\item Patchify stem (stride 4 convolution) để mô phỏng tokenization.
+	\item Large kernel depthwise convolution ($7\times7$) để mở rộng receptive field.
+	\item LayerNorm thay BatchNorm, GELU thay ReLU.
+	\item Inverted bottleneck như trong ViT.
+\end{itemize}
+
+Kết quả: ConvNeXt đạt 85.8\% top-1 ImageNet accuracy và hiệu năng tương đương Swin Transformer-Large, cho thấy khoảng cách giữa CNN và Transformer đang dần bị xóa nhòa.
+
+\begin{mdframed}[style=infobox]
+	\textbf{Nhận xét:}  
+	ConvNeXt chứng minh rằng nhiều cải tiến của Transformer không chỉ đến từ self-attention, mà từ triết lý thiết kế tổng thể: normalization thống nhất, depth scaling, và training scheme hiện đại.  
+	Nói cách khác, CNN và Transformer đang hội tụ trong tư tưởng thiết kế hơn là khác biệt trong cơ chế cốt lõi.
+\end{mdframed}
+
+---
+
+\subsection{Xu hướng Mới (2023–2025): Hợp nhất Hoàn toàn}
+\label{subsec:hybrid_trends}
+
+Từ năm 2023 trở đi, các mô hình mới tiếp tục làm mờ ranh giới giữa hai kiến trúc:
+\begin{itemize}
+	\item \textbf{MetaFormer} \cite{Yu2022}: trừu tượng hóa Transformer thành kiến trúc khung, cho phép thay attention bằng bất kỳ phép “token mixer” nào, bao gồm cả convolution.
+	\item \textbf{ConvFormer} \cite{Zhang2023}: chèn convolution trực tiếp vào attention head để khai thác tính cục bộ mà không tăng chi phí.
+	\item \textbf{EfficientViT} (2024): thiết kế attention tuyến tính kết hợp depthwise convolution, đạt hiệu năng tốt trên cả Edge và Cloud.
+\end{itemize}
+
+Những hướng này cho thấy sự hội tụ rõ rệt: thay vì chọn giữa “CNN hay Transformer”, cộng đồng đang hướng đến một \textbf{kiến trúc hợp nhất (Unified Vision Backbone)} — nơi attention, convolution, và token mixing chỉ còn là những phép trộn linh hoạt trong cùng một framework.
+
+---
+
+\subsection{Kết luận}
+\label{subsec:hybrid_conclusion}
+
+Sự tiến hóa từ CNN $\rightarrow$ Transformer $\rightarrow$ Hybrid phản ánh quá trình hội tụ tự nhiên của các ý tưởng trong thị giác máy tính.  
+Kiến trúc lai không chỉ là “sự thỏa hiệp” giữa hai trường phái, mà là một bước tiến về tư duy thiết kế:  
+tận dụng thiên kiến cấu trúc của CNN để học nhanh và ổn định, đồng thời khai thác sức mạnh biểu diễn toàn cục của Transformer để hiểu sâu hơn ngữ cảnh hình ảnh.  
+
+Từ CoAtNet đến ConvNeXt, rồi MetaFormer và EfficientViT, ranh giới giữa hai họ mô hình đang dần biến mất, mở ra kỷ nguyên của các \textbf{mô hình thị giác hợp nhất} — nền tảng cho các hệ thống thị giác đa nhiệm và tổng quát trong tương lai.
+
+
+\section*{Tài liệu tham khảo}
+\begin{itemize}
+	\item[1] Dai, Z., Liu, H., Le, Q. V., \& Tan, M. (2021). Coatnet: Marrying convolution and attention for all data sizes. In \textit{Advances in Neural Information Processing Systems (NeurIPS)}. (Paper gốc giới thiệu CoAtNet).
+	\item[2] Mehta, S., \& Rastegari, M. (2021). Mobilevit: light-weight, general-purpose, and mobile-friendly vision transformer. \textit{arXiv preprint arXiv:2110.02178}. (Paper gốc giới thiệu MobileViT).
+	\item[3] Liu, Z., Mao, H., Wu, C. Y., Feichtenhofer, C., Darrell, T., \& Xie, S. (2022). A convnet for the 2020s. In \textit{Proceedings of the IEEE/CVF conference on computer vision and pattern recognition (CVPR)}. (Paper gốc giới thiệu ConvNeXt).
+	\item[4] Wu, H., Xiao, B., Codella, N., Liu, M., Dai, X., Yuan, L., \& Zhang, L. (2021). Cvt: Introducing convolutions to vision transformers. In \textit{Proceedings of the IEEE/CVF international conference on computer vision (ICCV)}. (Ví dụ về một kiến trúc lai khác, tích hợp convolution vào các khối Transformer).
+	\item[5] Dosovitskiy, A., Beyer, L., Kolesnikov, A., Weissenborn, D., Zhai, X., Unterthiner, T., ... \& Houlsby, N. (2020). An image is worth 16x16 words: Transformers for image recognition at scale. \textit{arXiv preprint arXiv:2010.11929}. (Paper về ViT, cung cấp bối cảnh cho sự ra đời của các mô hình lai).
+\end{itemize}

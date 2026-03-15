@@ -1,0 +1,79 @@
+\section{Mô hình Ngôn ngữ-Video: Thấu hiểu Thế giới Động}
+\label{sec:video_language_models}
+
+\subsection{Tổng quan: Vượt ra ngoài Khung hình Tĩnh}
+\label{subsec:vlm_overview}
+Các Mô hình Ngôn ngữ-Thị giác Lớn (LVLMs) đã chứng tỏ khả năng lý luận sâu sắc trên các hình ảnh tĩnh. Tuy nhiên, thế giới của chúng ta không phải là một bộ sưu tập các khoảnh khắc rời rạc; nó là một dòng chảy liên tục của các sự kiện, hành động và tương tác. Để một hệ thống AI có thể thực sự hiểu được thế giới, nó phải có khả năng hiểu được \textbf{video}.
+
+\textbf{Các Mô hình Ngôn ngữ-Video (Video-Language Models - VLMs)} là sự mở rộng tự nhiên của LVLMs, được thiết kế để xử lý và lý luận trên dữ liệu động. Chúng không chỉ phải nhận dạng các đối tượng trong video, mà còn phải hiểu được:
+\begin{itemize}
+	\item \textbf{Hành động (Actions):} Một người đang làm gì? (ví dụ: "đang chạy", "đang ăn").
+	\item \textbf{Sự kiện (Events):} Điều gì đang xảy ra trong cảnh? (ví dụ: "một trận đấu bóng đá", "một bữa tiệc sinh nhật").
+	\item \textbf{Quan hệ Nhân quả và Thời gian (Causal and Temporal Relationships):} Hành động nào dẫn đến hành động nào? Trình tự của các sự kiện là gì?
+\end{itemize}
+Việc tích hợp chiều thời gian vào các mô hình đa phương thức đặt ra những thách thức mới về kiến trúc và chi phí tính toán, nhưng cũng mở ra những khả năng ứng dụng vô cùng to lớn.
+
+\subsection{Thách thức của Việc Mô hình hóa Video}
+\label{subsec:video_modeling_challenges}
+So với hình ảnh, video mang lại hai thách thức chính:
+\begin{enumerate}
+	\item \textbf{Gánh nặng Tính toán:} Một đoạn video ngắn có thể chứa hàng trăm hoặc hàng nghìn khung hình, làm tăng đáng kể lượng dữ liệu cần xử lý so với một ảnh tĩnh duy nhất.
+	\item \textbf{Mô hình hóa Phụ thuộc theo Thời gian (Temporal Dependency Modeling):} Làm thế nào để mô hình có thể nắm bắt được các mối quan hệ giữa các khung hình cách xa nhau, duy trì sự nhất quán của đối tượng (object permanence), và hiểu được các chuỗi hành động phức tạp?
+\end{enumerate}
+Các mô hình VLM hiện đại giải quyết những vấn đề này bằng cách kết hợp các bộ mã hóa thị giác hiệu quả với các cơ chế mô hình hóa thời gian mạnh mẽ.
+
+\subsection{LLaVA-Next (2024): Mở rộng Đối thoại sang Video}
+\label{subsec:llava_next}
+\textbf{LLaVA-Next} \cite{Liu2024_LLaVANext} là một trong những nỗ lực hàng đầu nhằm mở rộng kiến trúc LVLM thành công của LLaVA sang miền video.
+
+\textbf{Kiến trúc và Cách tiếp cận:}
+LLaVA-Next duy trì triết lý "đơn giản và hiệu quả" của người tiền nhiệm.
+\begin{itemize}
+	\item \textbf{Bộ mã hóa Thị giác-Thời gian (Spatio-Temporal Vision Encoder):} Thay vì chỉ mã hóa một ảnh, LLaVA-Next sử dụng một bộ mã hóa có khả năng xử lý một chuỗi các khung hình. Các đặc trưng từ từng khung hình (thường được trích xuất bởi một vision encoder như CLIP-ViT) được tổng hợp lại để tạo ra một biểu diễn duy nhất cho toàn bộ đoạn video.
+	\item \textbf{Huấn luyện Hướng dẫn trên Video (Video Instruction Tuning):} Tương tự như LLaVA, LLaVA-Next được tinh chỉnh trên một bộ dữ liệu lớn gồm các cặp (video, câu hỏi-trả lời) để học cách tuân theo các hướng dẫn và thực hiện các tác vụ lý luận trên video.
+\end{itemize}
+\textbf{Khả năng:} LLaVA-Next có thể thực hiện các tác vụ như trả lời các câu hỏi chi tiết về nội dung của một video, tạo ra các mô tả tóm tắt, và lý luận về các sự kiện diễn ra theo thời gian. Sự thành công của nó cho thấy tiềm năng của việc mở rộng các kiến trúc LVLM hiện có sang miền video một cách hiệu quả.
+
+\subsection{VILA (2024): Tăng cường Khả năng Hiểu biết Thời gian}
+\label{subsec:vila}
+\textbf{VILA (VIsual Language Assistant)} \cite{Lin2024_VILA} là một họ các mô hình VLM tập trung vào việc cải thiện khả năng hiểu biết và lý luận theo thời gian.
+
+\textbf{Đặc điểm nổi bật:}
+\begin{itemize}
+	\item \textbf{Huấn luyện trước trên Dữ liệu Video-Văn bản:} Không giống như nhiều mô hình chỉ được tinh chỉnh trên video, VILA được huấn luyện trước trên một lượng lớn dữ liệu video và văn bản, giúp nó học được các biểu diễn thời gian mạnh mẽ hơn ngay từ đầu.
+	\item \textbf{Khả năng "Đóng băng" Khung hình (Frame Freezing):} VILA thể hiện khả năng ấn tượng trong việc "ghi nhớ" và tham chiếu đến các sự kiện đã xảy ra ở các khung hình trước đó trong một cuộc đối thoại đa lượt, một kỹ năng quan trọng cho việc phân tích các video dài.
+\end{itemize}
+VILA đại diện cho một bước tiến trong việc xây dựng các VLM có khả năng xử lý và lý luận trên các bối cảnh thời gian dài và phức tạp.
+
+\subsection{InternVL và InternVid (2024): Hướng tới Mô hình Nền tảng Thống nhất}
+\label{subsec:internvid}
+Dự án \textbf{InternVL} và \textbf{InternVid} \cite{Chen2024_InternVL} từ Shanghai AI Lab là một nỗ lực đầy tham vọng nhằm xây dựng một mô hình nền tảng đa phương thức thống nhất, có khả năng xử lý xuất sắc cả hình ảnh và video.
+
+\textbf{Triết lý:}
+Thay vì huấn luyện các mô hình riêng biệt, InternVL được thiết kế như một mô hình duy nhất, mạnh mẽ, có thể được tinh chỉnh hiệu quả cho cả tác vụ hình ảnh và video.
+\begin{itemize}
+	\item \textbf{Backbone Thị giác Mạnh mẽ:} Nền tảng của InternVL là \textbf{InternImage}, một kiến trúc lai CNN-Attention cực kỳ mạnh mẽ cho các tác vụ dày đặc.
+	\item \textbf{Tinh chỉnh Hiệu quả cho Video:} Khi áp dụng cho video, mô hình (trở thành InternVid) được tinh chỉnh trên một lượng lớn dữ liệu video, tập trung vào việc học các đặc trưng động học và thời gian.
+	\item \textbf{Hiệu năng SOTA:} InternVL và InternVid đã đạt được hiệu năng state-of-the-art trên một loạt các benchmark về cả hình ảnh và video, từ phân loại, phát hiện, đến trả lời câu hỏi và tạo chú thích, chứng tỏ sức mạnh của một cách tiếp cận thống nhất.
+\end{itemize}
+
+\subsection{Kết luận và Tương lai}
+\label{subsec:vlm_conclusion}
+Các Mô hình Ngôn ngữ-Video đang nhanh chóng xóa nhòa ranh giới giữa việc hiểu một khoảnh khắc và hiểu một câu chuyện. Chúng là bước tiến tự nhiên và tất yếu trong quá trình phát triển của AI đa phương thức, chuyển từ thế giới tĩnh của hình ảnh sang thế giới động của video.
+
+Xu hướng trong giai đoạn 2024–2025 đang hội tụ về:
+\begin{itemize}
+	\item \textbf{Các Mô hình Nền tảng Thống nhất:} Xây dựng các mô hình duy nhất, có khả năng xử lý liền mạch văn bản, hình ảnh, video và âm thanh.
+	\item \textbf{Lý luận Thời gian Dài hạn:} Cải thiện "bộ nhớ" của các mô hình để chúng có thể hiểu và tóm tắt các video dài hàng giờ, thay vì chỉ vài giây.
+	\item \textbf{Tương tác và Chỉnh sửa Video:} Cho phép người dùng "trò chuyện" với video, đặt câu hỏi về các sự kiện cụ thể, và thậm chí ra lệnh chỉnh sửa video bằng ngôn ngữ tự nhiên.
+\end{itemize}
+Các mô hình này không chỉ là công cụ để phân tích video; chúng đang trở thành nền tảng cho thế hệ tiếp theo của các hệ thống tìm kiếm thông minh, các trợ lý AI tương tác, và các công cụ sáng tạo nội dung, nơi sự hiểu biết sâu sắc về thế giới động là chìa khóa.
+
+\section*{Tài liệu tham khảo}
+\begin{itemize}
+	\item[1] Liu, H., et al. (2024). LLaVA-NeXT: Improved reasoning, OCR, and world knowledge. \textit{arXiv preprint arXiv:2402.16694}. (Công bố về LLaVA-Next và các khả năng mở rộng sang video).
+	\item[2] Lin, B., et al. (2024). VILA: On Pre-training for Video Language Models. \textit{arXiv preprint arXiv:2402.17919}. (Paper giới thiệu họ mô hình VILA).
+	\item[3] Chen, Z., et al. (2024). InternVL: Scaling up Vision Foundation Models and Aligning for Generic Visual-Linguistic Tasks. \textit{arXiv preprint arXiv:2312.14238}. (Paper giới thiệu InternVL và InternVid).
+	\item[4] Li, Y., et al. (2023). Video-LLaMA: An instruction-tuned audio-visual language model for video understanding. \textit{arXiv preprint arXiv:2306.02858}. (Một trong những nỗ lực sớm và có ảnh hưởng trong việc mở rộng LLaVA sang video).
+	\item[5] Maaz, M., et al. (2024). Video-ChatGPT: A video-based conversational AI. \textit{arXiv preprint arXiv:2306.05424}. (Một mô hình VLM đối thoại tiêu biểu khác).
+\end{itemize}

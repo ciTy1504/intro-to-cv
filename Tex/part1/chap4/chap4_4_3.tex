@@ -1,0 +1,218 @@
+\section{Các Biến thể và Cải tiến: Swin Transformer và DeiT}
+\label{sec:vit_variants_and_improvements}
+
+Sự ra đời của Vision Transformer (ViT) đã mở ra một chân trời mới, nhưng cũng đồng thời đặt ra những thách thức lớn. Mặc dù chứng minh được tiềm năng vượt qua CNN, ViT thuần túy bộc lộ hai điểm yếu cốt lõi đã cản trở việc áp dụng rộng rãi nó:
+\begin{enumerate}
+	\item \textbf{Đói dữ liệu (Data-Hungry):} Do thiếu các thiên kiến quy nạp (inductive biases) về không gian như CNN, ViT đòi hỏi việc huấn luyện trước (pre-training) trên các bộ dữ liệu quy mô cực lớn (ví dụ, JFT-300M với 300 triệu ảnh) để có thể học được các quy luật thị giác cơ bản và đạt hiệu năng cao. Khi huấn luyện từ đầu trên các bộ dữ liệu cỡ vừa như ImageNet-1K, hiệu năng của nó thường thua kém các mạng ResNet tương đương.
+	\item \textbf{Thiếu cấu trúc phân cấp (Lack of Hierarchy):} ViT tạo ra các token có cùng độ phân giải không gian ở tất cả các lớp. Cấu trúc "phẳng" này không phù hợp với các tác vụ thị giác dày đặc (dense prediction tasks) như phát hiện vật thể hay phân đoạn ảnh, vốn được hưởng lợi rất nhiều từ các bản đồ đặc trưng đa tỷ lệ (multi-scale feature maps) do CNN tạo ra.
+\end{enumerate}
+Để giải quyết những vấn đề này, một làn sóng các kiến trúc Transformer cải tiến đã ra đời, tập trung vào việc làm cho Transformer trở nên hiệu quả hơn về dữ liệu, hiệu quả hơn về tính toán, và linh hoạt hơn cho nhiều tác vụ. Trong phần này, chúng ta sẽ khám phá hai trong số những biến thể có ảnh hưởng nhất: DeiT và Swin Transformer.
+
+\subsection{DeiT: Transformer Hiệu quả Dữ liệu qua Chưng cất Tri thức}
+\label{subsec:deit}
+
+\textbf{Data-efficient Image Transformer (DeiT)} \cite{Touvron2021}, được giới thiệu bởi Facebook AI, đã giải quyết trực diện vấn đề \textit{"đói dữ liệu"} của ViT. Mục tiêu của DeiT rất rõ ràng: làm thế nào để một kiến trúc Transformer thuần túy có thể đạt được hiệu năng cạnh tranh khi chỉ được huấn luyện trên bộ dữ liệu \textbf{ImageNet-1K}, mà không cần đến hàng trăm triệu ảnh để pre-train như ViT gốc.
+
+\subsubsection{Đóng góp chính: Chưng cất Tri thức từ CNN}
+\label{subsubsec:deit_knowledge_distillation}
+
+Ý tưởng cốt lõi của DeiT là tận dụng một chiến lược huấn luyện thông minh gọi là \textbf{Chưng cất Tri thức (Knowledge Distillation)}. Thay vì chỉ học từ các nhãn cứng (\textit{hard labels} — vector one-hot) của dữ liệu, mô hình “học sinh” (\textit{student model}, ở đây là DeiT) còn học thêm từ các dự đoán “mềm” (\textit{soft labels} — phân bố xác suất) được sinh ra bởi một mô hình “giáo viên” (\textit{teacher model}) mạnh mẽ đã được huấn luyện trước.
+
+Trong trường hợp của DeiT, nhóm tác giả lựa chọn một mạng CNN hiệu năng cao (ví dụ: RegNet) làm mô hình giáo viên. Nhờ đó, DeiT có thể \textbf{học gián tiếp các thiên kiến quy nạp về không gian} vốn đặc trưng của CNN, mà không cần tích hợp trực tiếp các cơ chế tích chập vào kiến trúc Transformer.
+
+Hàm mất mát tổng thể được định nghĩa như sau:
+\begin{equation}
+	\mathcal{L}_{\text{total}} = (1-\alpha)\,\mathcal{L}_{\text{CE}}(\psi(y), y_{\text{true}}) + \alpha\,\tau^2\,\mathcal{L}_{\text{KL}}(\psi(y/\tau), \psi(y_{\text{teacher}}/\tau))
+\end{equation}
+trong đó:
+\begin{itemize}
+	\item $\mathcal{L}_{\text{CE}}$ là hàm mất mát Cross-Entropy thông thường trên các nhãn cứng $y_{\text{true}}$.
+	\item $\mathcal{L}_{\text{KL}}$ là mất mát Kullback–Leibler (KL) divergence, đo độ khác biệt giữa phân bố xác suất của học sinh và giáo viên.
+	\item $\psi$ là hàm softmax, $\tau$ là tham số “nhiệt độ” (temperature) dùng để làm mềm phân bố, và $\alpha$ là hệ số cân bằng giữa hai thành phần mất mát.
+\end{itemize}
+
+\subsubsection{Distillation Token: Mở rộng trực tiếp của ViT}
+\label{subsubsec:deit_distillation_token}
+
+Để tăng cường hiệu quả của quá trình chưng cất, DeiT giới thiệu một thành phần kiến trúc mới: \textbf{Distillation Token}. Token này được thêm vào chuỗi đầu vào, song song với [CLS] token và các patch token.
+\begin{itemize}
+	\item Distillation token được huấn luyện để học trực tiếp từ đầu ra của mô hình giáo viên, thông qua thành phần mất mát $\mathcal{L}_{\text{KL}}$.
+	\item Trong khi đó, [CLS] token vẫn được tối ưu hóa theo hàm mất mát Cross-Entropy, nhằm học từ nhãn thật.
+\end{itemize}
+
+Khi suy luận, đầu ra từ cả hai token ([CLS] và Distillation) có thể được kết hợp hoặc trung bình để tạo ra dự đoán cuối cùng, giúp cải thiện độ chính xác mà không làm tăng đáng kể độ phức tạp của mô hình.
+
+\begin{center}
+	\includegraphics[width=0.9\textwidth]{images/deit_distillation_diagram.png}
+	\captionof{figure}{Sơ đồ huấn luyện của DeiT. Mô hình học sinh (DeiT) học đồng thời từ nhãn cứng (qua [CLS] token) và dự đoán mềm của mô hình giáo viên CNN (qua Distillation Token).}
+	\label{fig:deit_distillation}
+\end{center}
+% Keyword gợi ý: deit knowledge distillation, distillation token, data efficient image transformer
+
+\subsubsection{Kết quả và Tầm ảnh hưởng}
+DeiT đã đạt được kết quả mang tính bước ngoặt: \textbf{DeiT-Base}, chỉ huấn luyện trên ImageNet-1K, đạt hiệu năng tương đương với \textbf{ViT-Base} được huấn luyện trước trên bộ dữ liệu khổng lồ JFT-300M.  
+Thành tựu này đã \textbf{“dân chủ hóa” việc huấn luyện Vision Transformer}, chứng minh rằng Transformer có thể đạt hiệu quả cao ngay cả trong điều kiện dữ liệu hạn chế, nếu được huấn luyện đúng cách.  
+DeiT trở thành nền tảng cho nhiều biến thể sau này (như DeiT-II, DINO, iBOT), nơi chưng cất tri thức được mở rộng sang các thiết lập tự giám sát và đa phương thức.
+
+\subsection{Swin Transformer: Kiến trúc Phân cấp với Cửa sổ Dịch chuyển}
+\label{subsec:swin_transformer}
+
+Trong khi DeiT tập trung giải quyết vấn đề hiệu quả dữ liệu, \textbf{Swin Transformer} \cite{Liu2021} do Microsoft Research đề xuất lại hướng đến một mục tiêu tham vọng hơn: xây dựng một kiến trúc Transformer có thể đóng vai trò như một \textbf{xương sống thị giác đa dụng (general-purpose vision backbone)}, đủ linh hoạt để thay thế CNN trong các tác vụ thị giác dày đặc như phát hiện vật thể, phân đoạn ngữ nghĩa hay phân đoạn thể hiện.
+
+Swin Transformer đạt được điều này bằng cách khắc phục hai hạn chế cốt lõi của ViT:
+\begin{enumerate}
+	\item Độ phức tạp tính toán bậc hai $O(N^2)$ của self-attention toàn cục, vốn khiến ViT khó mở rộng cho ảnh có độ phân giải cao.
+	\item Sự thiếu vắng cấu trúc phân cấp (hierarchical structure), khiến ViT không thể trực tiếp tạo ra đặc trưng đa tỷ lệ cần thiết cho các bài toán dày đặc.
+\end{enumerate}
+
+\subsubsection{Đóng góp chính 1: Windowed và Shifted Window Self-Attention}
+\label{subsubsec:swin_window_attention}
+
+Để kiểm soát chi phí tính toán của self-attention, Swin Transformer giới thiệu cơ chế \textbf{Window-based Multi-Head Self-Attention (W-MSA)}.  
+Ý tưởng chính là chia feature map đầu vào thành các cửa sổ (\textit{windows}) không chồng lấp, kích thước cố định (ví dụ: $7 \times 7$ patch). Self-attention được tính toán \textit{bên trong từng cửa sổ}, thay vì trên toàn bộ ảnh.  
+Nhờ đó, độ phức tạp giảm từ $O(N^2)$ xuống gần tuyến tính theo số patch, cho phép mô hình xử lý ảnh độ phân giải cao mà vẫn duy trì khả năng song song hóa của Transformer.
+
+Tuy nhiên, cơ chế W-MSA có nhược điểm là các cửa sổ bị tách biệt, không có trao đổi thông tin giữa chúng. Để giải quyết, nhóm tác giả giới thiệu \textbf{Shifted Window Multi-Head Self-Attention (SW-MSA)} — một thiết kế đơn giản nhưng hiệu quả:
+\begin{itemize}
+	\item Trong các khối Swin liên tiếp, lưới cửa sổ được \textbf{dịch chuyển} đi một nửa kích thước (ví dụ, $3$ hoặc $4$ patch), sao cho các patch ở biên cửa sổ trước được “trộn” vào cửa sổ mới.
+	\item Cơ chế này tạo ra các kết nối chéo giữa vùng lân cận, cho phép trao đổi thông tin xuyên cửa sổ mà không cần attention toàn cục.
+\end{itemize}
+
+Sự kết hợp luân phiên giữa W-MSA và SW-MSA giúp Swin Transformer đạt được sự cân bằng giữa \textbf{hiệu quả tính toán cục bộ} và \textbf{khả năng mô hình hóa ngữ cảnh toàn cục qua nhiều lớp}.
+
+\begin{center}
+	\includegraphics[width=0.8\textwidth]{images/swin_transformer_shifted_window.png}
+	\captionof{figure}{Cơ chế W-MSA và SW-MSA trong Swin Transformer. (Trái) Self-attention được tính trong các cửa sổ không chồng lấp. (Phải) Ở lớp kế tiếp, các cửa sổ được dịch chuyển, cho phép trao đổi thông tin giữa các vùng liền kề.}
+	\label{fig:swin_shifted_window}
+\end{center}
+% Keyword gợi ý: swin transformer shifted window, w-msa sw-msa
+
+\subsubsection{Đóng góp chính 2: Kiến trúc Phân cấp (Hierarchical Architecture)}
+\label{subsubsec:swin_hierarchical}
+
+Để xây dựng đặc trưng đa tỷ lệ tương tự như CNN, Swin Transformer sử dụng một cơ chế gọi là \textbf{Patch Merging}.  
+Thành phần này hoạt động như một “pooling” học được:
+\begin{itemize}
+	\item Đầu vào là các patch embedding từ tầng trước; bốn patch $2\times2$ lân cận được \textbf{ghép nối} lại (concatenate), tăng số chiều kênh lên gấp 4 lần.
+	\item Sau đó, một lớp tuyến tính được áp dụng để \textbf{giảm số chiều xuống một nửa}, vừa tăng cường tính biểu diễn, vừa giảm kích thước không gian.
+\end{itemize}
+
+Cơ chế này giúp Swin Transformer hình thành một cấu trúc kim tự tháp đặc trưng — độ phân giải giảm dần, số kênh tăng dần qua các stage — tương tự thiết kế phổ biến của ResNet hay FPN trong CNN.  
+Nhờ vậy, Swin Transformer có thể được dùng làm backbone cho hầu hết các bài toán thị giác mà trước đây chỉ CNN mới đảm nhiệm.
+
+\subsubsection{Kết quả và Ảnh hưởng}
+Nhờ hai cải tiến cốt lõi — attention theo cửa sổ dịch chuyển và thiết kế phân cấp — Swin Transformer đã trở thành \textbf{kiến trúc Transformer đầu tiên đạt hiệu năng state-of-the-art} đồng thời trên ba tác vụ thị giác nền tảng:
+\begin{itemize}
+	\item \textbf{Phân loại ảnh:} Trên ImageNet-1K, Swin đạt độ chính xác vượt trội so với ViT và DeiT.
+	\item \textbf{Phát hiện vật thể:} Khi dùng làm backbone cho Mask R-CNN hoặc Cascade R-CNN, Swin vượt qua ResNet-101 và EfficientNet.
+	\item \textbf{Phân đoạn ngữ nghĩa:} Trên ADE20K, Swin-Base thiết lập mốc mới về mIoU.
+\end{itemize}
+
+Với khả năng tổng quát cao, Swin Transformer đã trở thành nền tảng cho nhiều mô hình thị giác hiện đại (như SwinV2, InternImage, EVA) và được xem là cầu nối giữa \textbf{CNN truyền thống} và \textbf{Transformer thị giác quy mô lớn}.
+
+\subsection{Các Biến thể Đáng chú ý khác của Vision Transformer}
+\label{subsec:other_vit_variants}
+
+Sau khi ViT, DeiT và Swin Transformer khẳng định sức mạnh của kiến trúc Transformer trong thị giác máy tính, hàng loạt biến thể mới đã được đề xuất nhằm giải quyết các điểm yếu còn tồn tại — đặc biệt là vấn đề chi phí tính toán cao và thiếu cấu trúc phân cấp.  
+Các nghiên cứu này chủ yếu tập trung vào việc kết hợp những đặc tính cốt lõi của CNN (tính cục bộ, phân cấp, chia sẻ trọng số) với khả năng biểu diễn toàn cục của Transformer.  
+Dưới đây là một số biến thể tiêu biểu.
+
+\subsubsection{Pyramid Vision Transformer (PVT)}
+\label{subsubsec:pvt}
+
+\textbf{Pyramid Vision Transformer (PVT)} \cite{Wang2021} là một trong những mô hình đầu tiên đưa ý tưởng \textbf{phân cấp (hierarchical)} trở lại vào Vision Transformer, tương tự như cấu trúc kim tự tháp của CNN.  
+Thay vì xử lý ảnh ở độ phân giải cố định như ViT, PVT dần giảm độ phân giải không gian qua các tầng, đồng thời tăng số kênh đặc trưng, giúp mô hình nắm bắt thông tin ở nhiều mức tỉ lệ khác nhau.
+
+Điểm đổi mới cốt lõi của PVT là cơ chế \textbf{Spatial-Reduction Attention (SRA)}.  
+Thay vì tính toán self-attention trên toàn bộ không gian feature map, SRA áp dụng phép giảm mẫu (downsampling) lên các tensor \textit{Key} và \textit{Value} trước khi tính toán attention:
+\begin{itemize}
+	\item Điều này giúp giảm đáng kể chi phí tính toán — từ $O(HW \times HW)$ xuống còn khoảng $O(HW \times \frac{HW}{r^2})$, với $r$ là hệ số giảm mẫu.
+	\item Các tầng sâu hơn sử dụng hệ số giảm lớn hơn, duy trì khả năng mô hình hóa toàn cục mà không làm tăng đáng kể chi phí.
+\end{itemize}
+
+Nhờ thiết kế này, PVT có thể hoạt động hiệu quả như backbone cho các tác vụ dày đặc (phát hiện, phân đoạn), điều mà ViT nguyên bản gặp khó khăn.  
+Phiên bản mở rộng \textbf{PVTv2} \cite{Wang2022} còn cải thiện thêm độ ổn định và tốc độ suy luận, trở thành nền tảng phổ biến cho nhiều hệ thống thị giác đa nhiệm.
+
+---
+
+\subsubsection{Convolutional Vision Transformer (CvT)}
+\label{subsubsec:cvt}
+
+\textbf{Convolutional Vision Transformer (CvT)} \cite{Wu2021} là một hướng tiếp cận “lai” (hybrid), kết hợp trực tiếp tích chập vào bên trong kiến trúc Transformer.  
+Ý tưởng chính là: CNN rất mạnh trong việc khai thác tính cục bộ và bất biến dịch (translation invariance), trong khi Transformer lại vượt trội ở khả năng biểu diễn toàn cục. CvT cố gắng tận dụng cả hai thế giới này.
+
+Cụ thể, CvT thay thế embedding tuyến tính trong ViT bằng các lớp \textbf{tích chập có sải bước (strided convolutions)}:
+\begin{itemize}
+	\item Các phép tích chập này vừa trích xuất đặc trưng cục bộ, vừa giảm độ phân giải không gian của ảnh, tương tự như quá trình pooling trong CNN.
+	\item Ngoài ra, các phép chiếu \textit{Query}, \textit{Key}, và \textit{Value} trong self-attention cũng được thực hiện thông qua tích chập, thay vì các phép chiếu tuyến tính độc lập từng điểm ảnh.
+\end{itemize}
+
+Thiết kế này mang lại hai lợi ích quan trọng:
+\begin{enumerate}
+	\item Mô hình học được các mối quan hệ cục bộ trước khi mở rộng sang tương tác toàn cục qua attention.
+	\item Việc chia sẻ tham số theo không gian làm giảm số lượng tham số so với Transformer thuần túy.
+\end{enumerate}
+
+Kết quả là CvT đạt hiệu năng vượt trội so với ViT và DeiT cùng kích thước trên ImageNet, đồng thời có khả năng khái quát tốt hơn cho các tác vụ dày đặc như phát hiện vật thể (COCO) mà không cần thiết kế lại backbone.
+
+---
+
+\subsubsection{Tokens-to-Token Vision Transformer (T2T-ViT)}
+\label{subsubsec:t2t_vit}
+
+\textbf{T2T-ViT} \cite{Yuan2021} tập trung vào giai đoạn đầu của pipeline Transformer — cụ thể là quá trình chia ảnh thành patch.  
+ViT gốc chia ảnh thành các patch $P \times P$ độc lập, điều này làm mất thông tin biên giữa các patch, khiến mô hình khó học được các cấu trúc liên vùng.
+
+Để khắc phục, T2T-ViT đề xuất cơ chế \textbf{Tokens-to-Token (T2T) Transformation}:
+\begin{itemize}
+	\item Thay vì patchification một lần, ảnh được xử lý qua nhiều bước “token hóa” tuần tự.
+	\item Ở mỗi bước, một lớp attention cục bộ được áp dụng để gom thông tin từ các patch lân cận, sau đó giảm dần số lượng token.
+\end{itemize}
+
+Kết quả là các token cuối cùng mang nhiều thông tin ngữ cảnh hơn, tương tự như việc CNN mở rộng receptive field qua từng tầng.  
+Nhờ vậy, T2T-ViT hoạt động hiệu quả hơn trên các bộ dữ liệu vừa và nhỏ như ImageNet-1K, đặc biệt ở các cấu hình nhẹ (T2T-ViT-14, -19).
+
+---
+
+\subsubsection{Twins: Local–Global Attention}
+\label{subsubsec:twins}
+
+\textbf{Twins Transformer} (còn gọi là \textbf{Twins-SVT}) \cite{Chu2021} tìm cách kết hợp ưu điểm của \textbf{self-attention cục bộ} (như Swin) và \textbf{self-attention toàn cục} (như ViT).  
+Mục tiêu là đạt được cân bằng giữa khả năng biểu diễn và chi phí tính toán.
+
+Twins giới thiệu hai cơ chế attention song song:
+\begin{itemize}
+	\item \textbf{Locally-grouped Self-Attention (LSA):} tính attention trong các vùng không gian nhỏ, giúp mô hình học đặc trưng cục bộ hiệu quả.
+	\item \textbf{Global Subsampled Attention (GSA):} áp dụng attention toàn cục nhưng chỉ trên các token đã được giảm mẫu, cho phép trao đổi thông tin xuyên vùng với chi phí thấp.
+\end{itemize}
+
+Nhờ thiết kế này, Twins vừa duy trì độ phức tạp tuyến tính, vừa đạt hiệu năng cao trên các tác vụ phân loại và phát hiện.  
+Trên thực tế, Twins-SVT-L đạt kết quả tương đương Swin-Large trên ImageNet và COCO, nhưng với tốc độ huấn luyện nhanh hơn.
+
+---
+
+\subsubsection{Tổng kết}
+Nhìn chung, các biến thể này đại diện cho hai hướng phát triển chính của dòng Vision Transformer:
+\begin{itemize}
+	\item \textbf{Hướng phân cấp (hierarchical)} — ví dụ PVT, Swin, Twins — nhằm mang lại cấu trúc kim tự tháp tương tự CNN, giúp xử lý tốt hơn các tác vụ dày đặc.
+	\item \textbf{Hướng lai (hybrid)} — như CvT hoặc T2T-ViT — nhằm tái giới thiệu các đặc tính cục bộ của tích chập vào Transformer để cải thiện khả năng học trên dữ liệu giới hạn.
+\end{itemize}
+Hai hướng này sau đó đã hội tụ trong các kiến trúc hiện đại hơn (như SwinV2, ViTDet, DINOv2), tạo thành nền tảng cho thế hệ mô hình thị giác đa nhiệm hiện nay.
+
+\subsection{Kết luận}
+Nếu ViT là một tuyên ngôn táo bạo về tiềm năng của Transformer trong thị giác, thì các biến thể như DeiT và Swin Transformer chính là những công trình kỹ thuật đã biến tiềm năng đó thành hiện thực.
+\begin{itemize}
+	\item \textbf{DeiT} đã giải quyết bài toán hiệu quả dữ liệu, giúp Transformer trở nên dễ tiếp cận và thực tế hơn.
+	\item \textbf{Swin Transformer} đã giải quyết bài toán hiệu quả tính toán và cấu trúc phân cấp, đưa Transformer trở thành một xương sống thị giác toàn năng, có khả năng thay thế CNN trong hầu hết mọi tác vụ.
+\end{itemize}
+Những cải tiến này không chỉ là những bước tiến nhỏ, mà là những bước nhảy vọt đã củng cố vị thế của Transformer như một trụ cột mới trong kiến trúc thị giác máy tính, đặt nền móng vững chắc cho các mô hình nền tảng phức tạp hơn sẽ được thảo luận trong các chương sau.
+
+\section*{Tài liệu tham khảo}
+\begin{itemize}
+	\item[1] Touvron, H., Cord, M., Douze, M., Massa, F., Sablayrolles, A., \& Jégou, H. (2021). Training data-efficient image transformers \& distillation through attention. In \textit{International Conference on Machine Learning (ICML)}. (Paper gốc giới thiệu DeiT).
+	\item[2] Liu, Z., Lin, Y., Cao, Y., Hu, H., Wei, Y., Zhang, Z., ... \& Guo, B. (2021). Swin transformer: Hierarchical vision transformer using shifted windows. In \textit{Proceedings of the IEEE/CVF International Conference on Computer Vision (ICCV)}. (Paper gốc giới thiệu Swin Transformer).
+	\item[3] Dosovitskiy, A., Beyer, L., Kolesnikov, A., Weissenborn, D., Zhai, X., Unterthiner, T., ... \& Houlsby, N. (2020). An image is worth 16x16 words: Transformers for image recognition at scale. \textit{arXiv preprint arXiv:2010.11929}. (Paper gốc về ViT, cung cấp bối cảnh cho các cải tiến).
+	\item[4] Wang, W., Xie, E., Li, X., Fan, D. P., Song, K., Liang, D., ... \& Shao, L. (2021). Pyramid vision transformer: A versatile backbone for dense prediction without convolutions. In \textit{Proceedings of the IEEE/CVF international conference on computer vision (ICCV)}. (Paper gốc giới thiệu PVT).
+	\item[5] Wu, H., Xiao, B., Codella, N., Liu, M., Dai, X., Yuan, L., \& Zhang, L. (2021). Cvt: Introducing convolutions to vision transformers. In \textit{Proceedings of the IEEE/CVF international conference on computer vision (ICCV)}. (Paper gốc giới thiệu CvT).
+	\item[6] Hinton, G., Vinyals, O., \& Dean, J. (2015). Distilling the knowledge in a neural network. \textit{arXiv preprint arXiv:1503.02531}. (Paper kinh điển giới thiệu kỹ thuật Chưng cất Tri thức - Knowledge Distillation).
+\end{itemize}

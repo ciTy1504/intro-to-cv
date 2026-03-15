@@ -1,0 +1,57 @@
+\begin{MintedVerbatim}[commandchars=\\\{\}]
+\PYG{k+kn}{import}\PYG{+w}{ }\PYG{n+nn}{cv2}
+\PYG{k+kn}{import}\PYG{+w}{ }\PYG{n+nn}{numpy}\PYG{+w}{ }\PYG{k}{as}\PYG{+w}{ }\PYG{n+nn}{np}
+\PYG{k+kn}{import}\PYG{+w}{ }\PYG{n+nn}{matplotlib.pyplot}\PYG{+w}{ }\PYG{k}{as}\PYG{+w}{ }\PYG{n+nn}{plt}
+
+\PYG{k}{try}\PYG{p}{:}
+    \PYG{c+c1}{\PYGZsh{} Tải ảnh và chuyển sang ảnh xám}
+    \PYG{n}{image} \PYG{o}{=} \PYG{n}{cv2}\PYG{o}{.}\PYG{n}{imread}\PYG{p}{(}\PYG{l+s+s1}{\PYGZsq{}chessboard.png\PYGZsq{}}\PYG{p}{)}
+    \PYG{k}{if} \PYG{n}{image} \PYG{o+ow}{is} \PYG{k+kc}{None}\PYG{p}{:}
+        \PYG{k}{raise} \PYG{n+ne}{FileNotFoundError}\PYG{p}{(}\PYG{l+s+s2}{\PYGZdq{}Image not found. Please provide a sample image \PYGZsq{}chessboard.png\PYGZsq{}\PYGZdq{}}\PYG{p}{)}
+
+    \PYG{n}{gray\PYGZus{}image} \PYG{o}{=} \PYG{n}{cv2}\PYG{o}{.}\PYG{n}{cvtColor}\PYG{p}{(}\PYG{n}{image}\PYG{p}{,} \PYG{n}{cv2}\PYG{o}{.}\PYG{n}{COLOR\PYGZus{}BGR2GRAY}\PYG{p}{)}
+
+    \PYG{c+c1}{\PYGZsh{} \PYGZhy{}\PYGZhy{}\PYGZhy{} Harris Corner Detector \PYGZhy{}\PYGZhy{}\PYGZhy{}}
+    \PYG{c+c1}{\PYGZsh{} cv2.cornerHarris(image, blockSize, ksize, k)}
+    \PYG{c+c1}{\PYGZsh{} blockSize: Kích thước cửa sổ để tính ma trận M}
+    \PYG{c+c1}{\PYGZsh{} ksize: Kích thước của kernel Sobel}
+    \PYG{c+c1}{\PYGZsh{} k: Hằng số Harris}
+    \PYG{n}{harris\PYGZus{}response} \PYG{o}{=} \PYG{n}{cv2}\PYG{o}{.}\PYG{n}{cornerHarris}\PYG{p}{(}\PYG{n}{gray\PYGZus{}image}\PYG{p}{,} \PYG{n}{blockSize}\PYG{o}{=}\PYG{l+m+mi}{2}\PYG{p}{,} \PYG{n}{ksize}\PYG{o}{=}\PYG{l+m+mi}{3}\PYG{p}{,} \PYG{n}{k}\PYG{o}{=}\PYG{l+m+mf}{0.04}\PYG{p}{)}
+
+    \PYG{c+c1}{\PYGZsh{} Để trực quan hóa, ta có thể giãn nở kết quả để các điểm góc rõ hơn}
+    \PYG{n}{harris\PYGZus{}response\PYGZus{}dilated} \PYG{o}{=} \PYG{n}{cv2}\PYG{o}{.}\PYG{n}{dilate}\PYG{p}{(}\PYG{n}{harris\PYGZus{}response}\PYG{p}{,} \PYG{k+kc}{None}\PYG{p}{)}
+
+    \PYG{c+c1}{\PYGZsh{} Vẽ các điểm góc tìm được lên ảnh gốc}
+    \PYG{n}{image\PYGZus{}harris} \PYG{o}{=} \PYG{n}{image}\PYG{o}{.}\PYG{n}{copy}\PYG{p}{()}
+    \PYG{c+c1}{\PYGZsh{} Đặt ngưỡng để chọn các điểm có phản hồi cao}
+    \PYG{n}{image\PYGZus{}harris}\PYG{p}{[}\PYG{n}{harris\PYGZus{}response\PYGZus{}dilated} \PYG{o}{\PYGZgt{}} \PYG{l+m+mf}{0.01} \PYG{o}{*} \PYG{n}{harris\PYGZus{}response\PYGZus{}dilated}\PYG{o}{.}\PYG{n}{max}\PYG{p}{()]} \PYG{o}{=} \PYG{p}{[}\PYG{l+m+mi}{0}\PYG{p}{,} \PYG{l+m+mi}{0}\PYG{p}{,} \PYG{l+m+mi}{255}\PYG{p}{]} \PYG{c+c1}{\PYGZsh{} Màu đỏ}
+
+    \PYG{c+c1}{\PYGZsh{} \PYGZhy{}\PYGZhy{}\PYGZhy{} Shi\PYGZhy{}Tomasi Corner Detector (\PYGZdq{}Good Features to Track\PYGZdq{}) \PYGZhy{}\PYGZhy{}\PYGZhy{}}
+    \PYG{c+c1}{\PYGZsh{} cv2.goodFeaturesToTrack(image, maxCorners, qualityLevel, minDistance)}
+    \PYG{c+c1}{\PYGZsh{} maxCorners: Số lượng góc tốt nhất cần tìm.}
+    \PYG{c+c1}{\PYGZsh{} qualityLevel: Ngưỡng chất lượng (0\PYGZhy{}1). Một góc có chất lượng C sẽ bị loại nếu có góc tốt hơn với chất lượng C\PYGZsq{} \PYGZgt{} C trong vùng lân cận.}
+    \PYG{c+c1}{\PYGZsh{} minDistance: Khoảng cách Euclid tối thiểu giữa các góc được trả về.}
+    \PYG{n}{corners\PYGZus{}shi\PYGZus{}tomasi} \PYG{o}{=} \PYG{n}{cv2}\PYG{o}{.}\PYG{n}{goodFeaturesToTrack}\PYG{p}{(}\PYG{n}{gray\PYGZus{}image}\PYG{p}{,} \PYG{n}{maxCorners}\PYG{o}{=}\PYG{l+m+mi}{100}\PYG{p}{,} \PYG{n}{qualityLevel}\PYG{o}{=}\PYG{l+m+mf}{0.01}\PYG{p}{,} \PYG{n}{minDistance}\PYG{o}{=}\PYG{l+m+mi}{10}\PYG{p}{)}
+    \PYG{n}{corners\PYGZus{}shi\PYGZus{}tomasi} \PYG{o}{=} \PYG{n}{np}\PYG{o}{.}\PYG{n}{int0}\PYG{p}{(}\PYG{n}{corners\PYGZus{}shi\PYGZus{}tomasi}\PYG{p}{)}
+
+    \PYG{n}{image\PYGZus{}shi\PYGZus{}tomasi} \PYG{o}{=} \PYG{n}{image}\PYG{o}{.}\PYG{n}{copy}\PYG{p}{()}
+    \PYG{k}{for} \PYG{n}{i} \PYG{o+ow}{in} \PYG{n}{corners\PYGZus{}shi\PYGZus{}tomasi}\PYG{p}{:}
+        \PYG{n}{x}\PYG{p}{,} \PYG{n}{y} \PYG{o}{=} \PYG{n}{i}\PYG{o}{.}\PYG{n}{ravel}\PYG{p}{()}
+        \PYG{n}{cv2}\PYG{o}{.}\PYG{n}{circle}\PYG{p}{(}\PYG{n}{image\PYGZus{}shi\PYGZus{}tomasi}\PYG{p}{,} \PYG{p}{(}\PYG{n}{x}\PYG{p}{,} \PYG{n}{y}\PYG{p}{),} \PYG{l+m+mi}{3}\PYG{p}{,} \PYG{p}{(}\PYG{l+m+mi}{0}\PYG{p}{,} \PYG{l+m+mi}{255}\PYG{p}{,} \PYG{l+m+mi}{0}\PYG{p}{),} \PYG{o}{\PYGZhy{}}\PYG{l+m+mi}{1}\PYG{p}{)} \PYG{c+c1}{\PYGZsh{} Màu xanh lá}
+
+    \PYG{c+c1}{\PYGZsh{} Hiển thị kết quả}
+    \PYG{n}{fig}\PYG{p}{,} \PYG{n}{axs} \PYG{o}{=} \PYG{n}{plt}\PYG{o}{.}\PYG{n}{subplots}\PYG{p}{(}\PYG{l+m+mi}{1}\PYG{p}{,} \PYG{l+m+mi}{2}\PYG{p}{,} \PYG{n}{figsize}\PYG{o}{=}\PYG{p}{(}\PYG{l+m+mi}{12}\PYG{p}{,} \PYG{l+m+mi}{6}\PYG{p}{))}
+    \PYG{n}{axs}\PYG{p}{[}\PYG{l+m+mi}{0}\PYG{p}{]}\PYG{o}{.}\PYG{n}{imshow}\PYG{p}{(}\PYG{n}{cv2}\PYG{o}{.}\PYG{n}{cvtColor}\PYG{p}{(}\PYG{n}{image\PYGZus{}harris}\PYG{p}{,} \PYG{n}{cv2}\PYG{o}{.}\PYG{n}{COLOR\PYGZus{}BGR2RGB}\PYG{p}{))}
+    \PYG{n}{axs}\PYG{p}{[}\PYG{l+m+mi}{0}\PYG{p}{]}\PYG{o}{.}\PYG{n}{set\PYGZus{}title}\PYG{p}{(}\PYG{l+s+s1}{\PYGZsq{}Harris Corner Detector\PYGZsq{}}\PYG{p}{)}
+    \PYG{n}{axs}\PYG{p}{[}\PYG{l+m+mi}{0}\PYG{p}{]}\PYG{o}{.}\PYG{n}{axis}\PYG{p}{(}\PYG{l+s+s1}{\PYGZsq{}off\PYGZsq{}}\PYG{p}{)}
+
+    \PYG{n}{axs}\PYG{p}{[}\PYG{l+m+mi}{1}\PYG{p}{]}\PYG{o}{.}\PYG{n}{imshow}\PYG{p}{(}\PYG{n}{cv2}\PYG{o}{.}\PYG{n}{cvtColor}\PYG{p}{(}\PYG{n}{image\PYGZus{}shi\PYGZus{}tomasi}\PYG{p}{,} \PYG{n}{cv2}\PYG{o}{.}\PYG{n}{COLOR\PYGZus{}BGR2RGB}\PYG{p}{))}
+    \PYG{n}{axs}\PYG{p}{[}\PYG{l+m+mi}{1}\PYG{p}{]}\PYG{o}{.}\PYG{n}{set\PYGZus{}title}\PYG{p}{(}\PYG{l+s+s1}{\PYGZsq{}Shi\PYGZhy{}Tomasi \PYGZdq{}Good Features to Track\PYGZdq{}\PYGZsq{}}\PYG{p}{)}
+    \PYG{n}{axs}\PYG{p}{[}\PYG{l+m+mi}{1}\PYG{p}{]}\PYG{o}{.}\PYG{n}{axis}\PYG{p}{(}\PYG{l+s+s1}{\PYGZsq{}off\PYGZsq{}}\PYG{p}{)}
+
+    \PYG{n}{plt}\PYG{o}{.}\PYG{n}{tight\PYGZus{}layout}\PYG{p}{()}
+    \PYG{n}{plt}\PYG{o}{.}\PYG{n}{show}\PYG{p}{()}
+
+\PYG{k}{except} \PYG{n+ne}{FileNotFoundError} \PYG{k}{as} \PYG{n}{e}\PYG{p}{:}
+    \PYG{n+nb}{print}\PYG{p}{(}\PYG{n}{e}\PYG{p}{)}
+\end{MintedVerbatim}

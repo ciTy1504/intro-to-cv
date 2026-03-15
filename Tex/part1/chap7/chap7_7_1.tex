@@ -1,0 +1,283 @@
+\section{Mạng Sinh đối nghịch (Generative Adversarial Networks - GANs)}
+\label{sec:gans}
+
+Trước năm 2014, việc huấn luyện các mô hình sinh (generative models) thường rất khó khăn, đòi hỏi các phương pháp tối ưu hóa phức tạp dựa trên maximum likelihood hoặc các chuỗi Markov. Mọi thứ đã thay đổi với sự ra đời của \textbf{Mạng Sinh đối nghịch (Generative Adversarial Networks - GANs)} \cite{Goodfellow2014}, một ý tưởng thanh lịch và mạnh mẽ được đề xuất bởi Ian Goodfellow và các cộng sự.
+
+\subsection{Ý tưởng Cốt lõi: Trò chơi của Người Sinh và Người Phát hiện}
+\label{subsec:gan_core_idea}
+
+\textbf{Generative Adversarial Networks (GANs)} thiết lập một \textbf{trò chơi đối kháng} giữa hai mạng nơ-ron, mô phỏng kịch bản “Người Sinh” cố gắng tạo dữ liệu giả và “Người Phát hiện” cố gắng phân biệt thật - giả:
+
+\begin{enumerate}
+	\item \textbf{Người Sinh (Generator - G):}  
+	Generator đóng vai trò như một “nghệ sĩ” hay “kẻ làm giả”. Nhiệm vụ của G là học cách tạo ra dữ liệu giả (ví dụ: ảnh) sao cho chúng trông giống dữ liệu thật nhất có thể.  
+	\begin{itemize}
+		\item \textbf{Đầu vào:} Vector nhiễu ngẫu nhiên $\mathbf{z} \sim p_\mathbf{z}(\mathbf{z})$ từ một phân phối tiên nghiệm (ví dụ Gaussian hoặc Uniform).  
+		\item \textbf{Đầu ra:} Dữ liệu giả $G(\mathbf{z})$, có hình dạng và phân phối tương tự dữ liệu thật.
+	\end{itemize}
+	
+	\item \textbf{Người Phát hiện (Discriminator - D):}  
+	Discriminator đóng vai trò như “cảnh sát” hoặc “nhà phê bình nghệ thuật”. Nhiệm vụ của D là phân biệt dữ liệu thật và dữ liệu giả.
+	\begin{itemize}
+		\item \textbf{Đầu vào:} Một mẫu dữ liệu (ảnh) $\mathbf{x}$, có thể là thật hoặc giả.  
+		\item \textbf{Đầu ra:} Xác suất $D(\mathbf{x}) \in [0,1]$ thể hiện mức độ “thật” của dữ liệu.
+	\end{itemize}
+\end{enumerate}
+
+\textbf{Quá trình huấn luyện đối kháng:}  
+G và D được huấn luyện đồng thời theo một trò chơi zero-sum:
+\begin{itemize}
+	\item \textbf{Huấn luyện Discriminator (D):} Cố gắng tối đa hóa khả năng phân biệt:
+	\begin{itemize}
+		\item Cho ảnh thật từ tập huấn luyện, D muốn dự đoán nhãn “thật”.  
+		\item Cho ảnh giả từ G, D muốn dự đoán nhãn “giả”.  
+		\item Trong bước này, trọng số của G được giữ cố định.
+	\end{itemize}
+	
+	\item \textbf{Huấn luyện Generator (G):} Cố gắng “đánh lừa” D:
+	\begin{itemize}
+		\item G tạo ảnh giả và muốn D phân loại chúng là “thật”.  
+		\item Trong bước này, trọng số của D được giữ cố định.
+	\end{itemize}
+\end{itemize}
+
+Quá trình này lặp đi lặp lại, D ngày càng trở nên tinh vi hơn trong việc phân biệt các lỗi nhỏ, buộc G phải tạo ra ảnh ngày càng chân thực. Trạng thái cân bằng lý tưởng (Nash equilibrium) xảy ra khi G tạo ra ảnh giả hoàn hảo, không thể phân biệt được với ảnh thật, và D chỉ có thể đoán ngẫu nhiên với xác suất 0.5.
+
+\begin{center}
+	\includegraphics[width=0.9\textwidth]{images/gan_architecture_diagram.png}
+	\captionof{figure}{Sơ đồ kiến trúc GAN: Người Sinh (Generator) tạo ảnh giả từ nhiễu, Người Phát hiện (Discriminator) phân biệt ảnh thật và giả. Hai mạng huấn luyện đối kháng lẫn nhau.}
+	\label{fig:gan_architecture}
+\end{center}
+
+\textbf{Hàm mất mát Minimax:}  
+Trò chơi đối kháng được mô tả bằng hàm mục tiêu minimax:
+\begin{equation}
+	\min_{G} \max_{D} V(D, G) = 
+	\mathbb{E}_{\mathbf{x} \sim p_{\text{data}}(\mathbf{x})} [\log D(\mathbf{x})] +
+	\mathbb{E}_{\mathbf{z} \sim p_{\mathbf{z}}(\mathbf{z})} [\log(1 - D(G(\mathbf{z})))]
+\end{equation}
+Trong đó:
+\begin{itemize}
+	\item D tối đa hóa hàm này, nhằm đưa $D(\mathbf{x}_{\text{real}}) \rightarrow 1$ và $D(\mathbf{x}_{\text{fake}}) \rightarrow 0$.  
+	\item G tối thiểu hóa hàm này, bằng cách làm cho $D(G(\mathbf{z})) \rightarrow 1$, tức là $\log(1 - D(G(\mathbf{z}))) \rightarrow -\infty$.
+\end{itemize}
+
+\subsection{Các Kiến trúc Nền tảng: DCGAN và WGAN}
+\label{subsec:dcgan_wgan}
+
+Các GAN gốc sử dụng mạng fully-connected, dẫn đến khó khăn trong việc học các cấu trúc phức tạp của ảnh và chỉ tạo ra hình ảnh chất lượng thấp. Để khắc phục, hai kiến trúc nền tảng là \textbf{DCGAN} và \textbf{WGAN} ra đời, mỗi kiến trúc giải quyết một khía cạnh quan trọng: khả năng học biểu diễn hình ảnh và ổn định huấn luyện.
+
+\subsubsection{DCGAN (2015): Tích hợp Tích chập}
+\label{subsubsec:dcgan}
+
+\textbf{Deep Convolutional GAN (DCGAN)} \cite{Radford2015} là bước đột phá cho GAN trên ảnh. DCGAN đề xuất một tập các nguyên tắc thiết kế giúp huấn luyện ổn định và tạo ra ảnh chất lượng cao:
+
+\begin{itemize}
+	\item \textbf{Thay lớp pooling bằng convolution:}  
+	\begin{itemize}
+		\item Trong Discriminator: sử dụng \textbf{strided convolution} để giảm chiều ảnh (downsampling).  
+		\item Trong Generator: sử dụng \textbf{transposed convolution} (tích chập chuyển vị) để tăng chiều ảnh (upsampling).
+	\end{itemize}
+	\item \textbf{Batch Normalization:} Ổn định gradient, giúp quá trình huấn luyện mượt mà hơn cho cả Generator và Discriminator.
+	\item \textbf{Loại bỏ fully-connected layers sâu:} Giảm sự phụ thuộc vào các kết nối toàn phần, tập trung học các đặc trưng không gian.
+	\item \textbf{Chức năng kích hoạt:} ReLU cho Generator (ngoại trừ lớp đầu ra dùng Tanh), LeakyReLU cho Discriminator.
+\end{itemize}
+
+\textbf{Kết quả:}  
+DCGAN tạo ra các ảnh có độ phân giải cao hơn, chân thực hơn (ví dụ: phòng ngủ, khuôn mặt). Nó cũng chứng minh rằng \textbf{không gian tiềm ẩn (latent space) học được các biểu diễn có ý nghĩa} – ví dụ, phép cộng vector trong latent space có thể mô phỏng các thay đổi ngữ nghĩa:  
+\[
+\text{“người đàn ông đeo kính”} - \text{“người đàn ông”} + \text{“người phụ nữ”} \approx \text{“người phụ nữ đeo kính”}.
+\]
+
+\subsubsection{WGAN (2017): Giải quyết Vấn đề Ổn định và Mode Collapse}
+\label{subsubsec:wgan}
+
+Một vấn đề lớn của GAN truyền thống là \textbf{mode collapse}, khi Generator chỉ học tạo ra một vài mẫu ảnh giả cực tốt, bỏ qua phần còn lại của phân phối dữ liệu thật. Đồng thời, quá trình huấn luyện thường không ổn định.
+
+\textbf{Wasserstein GAN (WGAN)} \cite{Arjovsky2017} cải thiện GAN bằng hai ý tưởng chính:
+
+\begin{itemize}
+	\item \textbf{Khoảng cách Wasserstein-1:}  
+	Thay vì đo lường sự khác biệt giữa hai phân phối bằng Jensen-Shannon divergence, WGAN dùng \textbf{Earth-Mover (EM) distance} để đo khoảng cách giữa phân phối thật và phân phối giả. EM distance mượt mà, cung cấp gradient có ý nghĩa ngay cả khi hai phân phối không chồng lên nhau.
+	
+	\item \textbf{Hàm mất mát WGAN:}
+	\begin{align}
+		\mathcal{L}_D &= \mathbb{E}_{\mathbf{x} \sim p_{\text{data}}} [D(\mathbf{x})] - \mathbb{E}_{\tilde{\mathbf{x}} \sim p_g} [D(\tilde{\mathbf{x}})] \\
+		\mathcal{L}_G &= \mathbb{E}_{\tilde{\mathbf{x}} \sim p_g} [D(\tilde{\mathbf{x}})]
+	\end{align}
+	
+	\item \textbf{Điều kiện Lipschitz:}  
+	Critic (Discriminator trong WGAN) cần thỏa mãn điều kiện 1-Lipschitz để hàm mất mát có ý nghĩa. WGAN ban đầu dùng \textbf{weight clipping}, nhưng WGAN-GP (Gradient Penalty) cải tiến bằng cách thêm một thành phần phạt gradient, đảm bảo norm của gradient bằng 1.
+\end{itemize}
+
+\textbf{Hiệu quả:}  
+WGAN và WGAN-GP giúp huấn luyện GAN ổn định hơn, giảm đáng kể mode collapse và cung cấp gradient tốt cho Generator ngay cả khi phân phối dữ liệu thật và giả gần như không chồng lấn.
+
+\subsection{StyleGAN: Làm chủ Phong cách và Chi tiết}
+\label{subsec:stylegan}
+
+\textbf{StyleGAN} \cite{Karras2019}, được NVIDIA giới thiệu vào năm 2018, đã tạo ra một cuộc cách mạng trong việc sinh ảnh chân thực với khả năng điều khiển chi tiết từng phần của hình ảnh. Các phiên bản kế nhiệm \textbf{StyleGAN2} và \textbf{StyleGAN3} tiếp tục nâng cao chất lượng, loại bỏ artifact và cải thiện tính bất biến cho video và hình động.
+
+\subsubsection{Kiến trúc Generator dựa trên phong cách (Style-based Generator)}
+
+Khác với GAN truyền thống, StyleGAN tách biệt \textbf{không gian tiềm ẩn} và \textbf{quá trình sinh ảnh}, cho phép kiểm soát các thuộc tính ảnh ở nhiều cấp độ.
+
+\begin{enumerate}
+	\item \textbf{Mapping Network:} 
+	\begin{itemize}
+		\item Vector tiềm ẩn $\mathbf{z}$ được lấy từ phân phối chuẩn (Gaussian) không được đưa trực tiếp vào Generator.
+		\item Thay vào đó, $\mathbf{z}$ được đưa qua một MLP gọi là \textbf{Mapping Network} để tạo ra vector trung gian $\mathbf{w}$ nằm trong không gian “ít vướng víu” (less entangled). 
+		\item $\mathbf{w}$ là vector điều khiển các đặc trưng hình ảnh mà Generator sinh ra, giúp kiểm soát các phong cách một cách trực quan.
+	\end{itemize}
+	
+	\item \textbf{Adaptive Instance Normalization (AdaIN):} 
+	\begin{itemize}
+		\item $\mathbf{w}$ được ánh xạ thành các tham số \textbf{scale} và \textbf{bias} dùng trong module AdaIN để điều khiển output của từng lớp tích chập.
+		\item Công thức AdaIN:
+		\begin{equation}
+			\text{AdaIN}(\mathbf{x}_i, \mathbf{y}) = \mathbf{y}_{s,i} \frac{\mathbf{x}_i - \mu(\mathbf{x}_i)}{\sigma(\mathbf{x}_i)} + \mathbf{y}_{b,i}
+		\end{equation}
+		Trong đó, $\mathbf{x}_i$ là feature map tại lớp i, và $\mathbf{y}_{s,i}, \mathbf{y}_{b,i}$ là scale và bias được sinh từ $\mathbf{w}$.
+		\item AdaIN giúp điều khiển các thuộc tính khác nhau ở từng lớp: 
+		\begin{itemize}
+			\item Lớp đầu: điều khiển các đặc trưng thô như tư thế, hình dạng chung. 
+			\item Lớp giữa: điều khiển chi tiết trung bình như hình dạng khuôn mặt, độ rộng mắt. 
+			\item Lớp cuối: điều khiển chi tiết tinh như kết cấu tóc, màu da, các hoa văn phức tạp.
+		\end{itemize}
+	\end{itemize}
+\end{enumerate}
+
+\subsubsection{Kết quả và Tầm quan trọng}
+\begin{itemize}
+	\item Kiến trúc style-based cho phép \textbf{phân tách các yếu tố hình ảnh theo cấp độ}, từ global tới local, giúp Generator tạo ra ảnh cực kỳ chân thực.
+	\item Không gian tiềm ẩn $\mathbf{w}$ trực quan hơn, dễ kiểm soát các đặc trưng ngữ nghĩa.
+	\item Các phiên bản StyleGAN2 và StyleGAN3 tiếp tục cải thiện:
+	\begin{itemize}
+		\item Loại bỏ artifact.
+		\item Tăng cường tính bất biến (invariance) cho xoay, dịch chuyển, zoom.
+		\item Hỗ trợ sinh ảnh mượt mà cho video và animation.
+	\end{itemize}
+\end{itemize}
+
+\begin{center}
+	\includegraphics[width=1.0\textwidth]{images/stylegan_architecture.jpg}
+	\captionof{figure}{Kiến trúc Generator dựa trên phong cách trong StyleGAN. Vector tiềm ẩn $\mathbf{z}$ được ánh xạ thành $\mathbf{w}$ qua Mapping Network, sau đó $\mathbf{w}$ điều khiển các lớp tích chập thông qua các module AdaIN để tạo ảnh với các đặc trưng ở nhiều cấp độ.}
+	\label{fig:stylegan_architecture}
+\end{center}
+
+\subsection{Conditional GAN và CycleGAN: Sinh ảnh có Điều kiện}
+\label{subsec:conditional_cyclegan}
+
+\subsubsection{Conditional GAN (cGAN)}
+\label{subsubsec:cgan}
+
+GAN cơ bản sinh ảnh không kiểm soát được output. \textbf{Conditional GAN (cGAN)} \cite{Mirza2014} giải quyết vấn đề này bằng cách cung cấp một thông tin điều kiện $y$ cho cả Generator và Discriminator.
+
+\textbf{Cơ chế hoạt động:}
+\begin{itemize}
+	\item \textbf{Generator ($G$):} Sinh ảnh giả $G(\mathbf{z}|y)$ dựa trên nhiễu $\mathbf{z}$ và điều kiện $y$ (ví dụ: nhãn lớp, ảnh khác, hoặc văn bản). Mục tiêu là tạo ra ảnh giả phù hợp với điều kiện, đánh lừa Discriminator.
+	\item \textbf{Discriminator ($D$):} Phân biệt các cặp (ảnh, điều kiện) thật và giả. Như vậy, D không chỉ xem ảnh, mà còn xem điều kiện đi kèm để đưa ra quyết định.
+\end{itemize}
+
+\textbf{Ứng dụng:} cGAN mở ra khả năng sinh ảnh theo lớp cụ thể, chuyển đổi ảnh-sang-ảnh (image-to-image translation) như Pix2Pix, hoặc sinh ảnh dựa trên mô tả văn bản.  
+
+\begin{center}
+	\includegraphics[width=0.9\textwidth]{images/cgan_architecture.png}
+	\captionof{figure}{Cơ chế Conditional GAN: Generator sinh ảnh dựa trên điều kiện $y$, Discriminator phân biệt các cặp (ảnh, điều kiện) thật và giả.}
+	\label{fig:cgan_architecture}
+\end{center}
+
+\subsubsection{CycleGAN (2017): Chuyển đổi Ảnh không cần Dữ liệu cặp}
+\label{subsubsec:cyclegan}
+
+Các mô hình như Pix2Pix yêu cầu các cặp ảnh (input, output) chính xác, điều này thường khó thực hiện. \textbf{CycleGAN} \cite{Zhu2017} cho phép chuyển đổi ảnh-sang-ảnh \textbf{không cần dữ liệu cặp (unpaired)} bằng cách huấn luyện đồng thời hai cặp Generator-Discriminator.
+
+\textbf{Cơ chế hoạt động:}
+\begin{itemize}
+	\item \textbf{Generator $G: X \rightarrow Y$} học cách biến đổi ảnh từ miền X sang miền Y (ví dụ: ngựa $\rightarrow$ ngựa vằn).
+	\item \textbf{Generator $F: Y \rightarrow X$} học cách chuyển ngược lại.
+	\item \textbf{Discriminator $D_X$ và $D_Y$} phân biệt ảnh thật và ảnh giả trong từng miền.
+	\item \textbf{Cycle-Consistency Loss:} Đảm bảo rằng ảnh chuyển X $\rightarrow$ Y $\rightarrow$ X vẫn giống ảnh gốc:
+	\begin{equation}
+		\mathcal{L}_{\text{cycle}} = \mathbb{E}_{\mathbf{x} \sim X} \big[\| F(G(\mathbf{x})) - \mathbf{x} \|_1 \big] 
+		+ \mathbb{E}_{\mathbf{y} \sim Y} \big[\| G(F(\mathbf{y})) - \mathbf{y} \|_1 \big].
+	\end{equation}
+\end{itemize}
+
+\textbf{Ý nghĩa:} Cycle-consistency giúp các Generator vừa tạo ra ảnh trông giống miền đích, vừa giữ cấu trúc nội dung của ảnh gốc. CycleGAN đã mở ra vô số ứng dụng sáng tạo, ví dụ: chuyển mùa, phong cách hội họa, hoặc chuyển ảnh thực sang ảnh nghệ thuật.
+
+\begin{center}
+	\includegraphics[width=1.0\textwidth]{images/cyclegan_architecture.png}
+	\captionof{figure}{Kiến trúc CycleGAN: Hai Generator $G$ và $F$ học chuyển đổi hai chiều giữa miền X và Y, với các Discriminator tương ứng $D_X$ và $D_Y$. Cycle-consistency đảm bảo tính nhất quán của nội dung.}
+	\label{fig:cyclegan_architecture}
+\end{center}
+
+\subsection{Các Phiên bản GAN Nổi bật Khác}
+\label{subsec:advanced_gans}
+
+Ngoài các GAN cơ bản, nhiều biến thể đã được phát triển để giải quyết các vấn đề về chất lượng ảnh, ổn định huấn luyện, điều khiển sinh ảnh, và chuyển đổi ảnh đa miền. Dưới đây là các phiên bản tiêu biểu:
+
+\subsubsection{Progressive GAN (PGGAN, 2017)}
+\textbf{Ý tưởng chính:} Huấn luyện GAN theo từng bước từ ảnh độ phân giải thấp lên cao.
+\begin{itemize}
+	\item \textbf{Cơ chế:} Bắt đầu sinh ảnh 4$\times$4, sau đó tăng dần lên 8$\times$8, 16$\times$16,... đến 1024$\times$1024. Mỗi bước thêm các layer mới vào Generator và Discriminator.
+	\item \textbf{Ưu điểm:} Giúp GAN sinh ảnh độ phân giải cao, ổn định hơn, giảm khó khăn huấn luyện.
+\end{itemize}
+
+\subsubsection{Self-Attention GAN (SAGAN, 2018)}
+\textbf{Ý tưởng chính:} Thêm cơ chế self-attention để Generator và Discriminator có khả năng quan sát toàn cảnh.
+\begin{itemize}
+	\item \textbf{Điểm mạnh:} Tăng chất lượng chi tiết và tính nhất quán của ảnh, đặc biệt với các đối tượng phức tạp hoặc cảnh quan.
+\end{itemize}
+
+\subsubsection{BigGAN (2018)}
+\textbf{Ý tưởng chính:} Mở rộng GAN với quy mô lớn, batch size cực lớn và spectral normalization.
+\begin{itemize}
+	\item \textbf{Điểm mạnh:} Sinh ảnh chất lượng cao, chi tiết phong phú, đặc biệt hiệu quả với bộ dữ liệu ImageNet.
+\end{itemize}
+
+\subsubsection{Pix2PixHD (2018)}
+\textbf{Ý tưởng chính:} Phiên bản nâng cấp của Pix2Pix, sinh ảnh cao phân giải cho tác vụ image-to-image translation.
+\begin{itemize}
+	\item \textbf{Cơ chế:} Kiến trúc multi-scale Generator và Discriminator, tăng độ sắc nét và chi tiết.
+	\item \textbf{Ứng dụng:} Sketch $\rightarrow$ ảnh thực, bản đồ $\rightarrow$ ảnh vệ tinh, chuyển ảnh semantic $\rightarrow$ ảnh thực.
+\end{itemize}
+
+\subsubsection{StarGAN (2018)}
+\textbf{Ý tưởng chính:} GAN đa miền (multi-domain) cho phép chuyển đổi ảnh sang nhiều miền khác nhau bằng một mô hình duy nhất.
+\begin{itemize}
+	\item \textbf{Ứng dụng:} Biểu cảm khuôn mặt, thay đổi tuổi, màu tóc, hoặc phong cách nghệ thuật.
+\end{itemize}
+
+\subsubsection{StyleGAN2-ADA (2020)}
+\textbf{Ý tưởng chính:} Cải tiến StyleGAN2 kết hợp Adaptive Data Augmentation (ADA) để huấn luyện với dữ liệu nhỏ.
+\begin{itemize}
+	\item \textbf{Điểm mạnh:} Sinh ảnh ổn định, giảm artifact, chống overfitting trên tập dữ liệu hạn chế.
+\end{itemize}
+
+\subsubsection{MUNIT / DRIT (2018–2019)}
+\textbf{Ý tưởng chính:} Image-to-image translation đa phong cách (multi-modal) bằng cách tách thông tin nội dung và phong cách.
+\begin{itemize}
+	\item \textbf{Cơ chế:} Mỗi ảnh input có thể được chuyển sang nhiều phong cách output khác nhau.
+	\item \textbf{Ứng dụng:} Chuyển ảnh mùa hè $\leftrightarrow$ mùa đông, ảnh thực $\leftrightarrow$ tranh vẽ, phong cách anime hoặc nghệ thuật.
+\end{itemize}
+
+\textbf{Tóm tắt:} Các phiên bản GAN này đã mở rộng khả năng sinh ảnh, cải thiện độ ổn định huấn luyện và cung cấp khả năng kiểm soát quá trình sinh, từ ảnh cao phân giải, chi tiết phong phú, đến chuyển đổi đa miền và đa phong cách. Chúng tạo thành nền tảng cho nhiều ứng dụng sáng tạo trong thị giác máy tính và nghệ thuật số.
+
+\subsection{Kết luận và Di sản}
+\label{subsec:gan_conclusion_legacy}
+GANs đã thống trị lĩnh vực mô hình sinh thị giác trong gần một thập kỷ. Chúng đã dạy cho cộng đồng nghiên cứu về tầm quan trọng của các hàm mất mát đối kháng, sự ổn định trong huấn luyện, và các kiến trúc cho phép điều khiển quá trình sinh. Các mô hình như \textbf{Progressive GAN}, \textbf{Self-Attention GAN (SAGAN)}, và \textbf{BigGAN} đã liên tục đẩy giới hạn về chất lượng và độ phân giải của ảnh sinh ra.
+
+Mặc dù ngày nay, các mô hình khuếch tán (Diffusion Models) đã vượt qua GANs về chất lượng ảnh và sự đa dạng trong nhiều tác vụ, di sản của GANs vẫn còn đó. Các ý tưởng về không gian tiềm ẩn, các kiến trúc generator, và đặc biệt là tư duy đối kháng vẫn tiếp tục là nguồn cảm hứng và là một phần quan trọng trong bộ công cụ của các nhà nghiên cứu AI.
+
+\section*{Tài liệu tham khảo}
+\begin{itemize}
+	\item[1] Goodfellow, I., Pouget-Abadie, J., Mirza, M., Xu, B., Warde-Farley, D., Ozair, S., ... \& Bengio, Y. (2014). Generative adversarial nets. In \textit{Advances in neural information processing systems (NeurIPS)}. (Paper gốc giới thiệu GAN).
+	\item[2] Radford, A., Metz, L., \& Chintala, S. (2015). Unsupervised representation learning with deep convolutional generative adversarial networks. \textit{arXiv preprint arXiv:1511.06434}. (Paper gốc giới thiệu DCGAN).
+	\item[3] Arjovsky, M., Chintala, S., \& Bottou, L. (2017). Wasserstein gan. \textit{arXiv preprint arXiv:1701.07875}. (Paper gốc giới thiệu WGAN).
+	\item[4] Karras, T., Laine, S., \& Aila, T. (2019). A style-based generator architecture for generative adversarial networks. In \textit{Proceedings of the IEEE/CVF conference on computer vision and pattern recognition (CVPR)}. (Paper gốc giới thiệu StyleGAN).
+	\item[5] Karras, T., Aittala, M., Laine, S., Härkönen, E., Hellsten, J., Lehtinen, J., \& Aila, T. (2021). Alias-free generative adversarial networks. In \textit{Advances in Neural Information Processing Systems (NeurIPS)}. (Paper giới thiệu StyleGAN3).
+	\item[6] Mirza, M., \& Osindero, S. (2014). Conditional generative adversarial nets. \textit{arXiv preprint arXiv:1411.1784}. (Paper gốc giới thiệu cGAN).
+	\item[7] Zhu, J. Y., Park, T., Isola, P., \& Efros, A. A. (2017). Unpaired image-to-image translation using cycle-consistent adversarial networks. In \textit{Proceedings of the IEEE international conference on computer vision (ICCV)}. (Paper gốc giới thiệu CycleGAN).
+	\item[8] Brock, A., Donahue, J., \& Simonyan, K. (2018). Large scale gan training for high fidelity natural image synthesis. \textit{arXiv preprint arXiv:1809.11096}. (Paper giới thiệu BigGAN).
+\end{itemize}
