@@ -12,9 +12,6 @@
 # Minted
 _minted/
 
-# PDF (optional)
-*.pdf
-
 # OS
 .DS_Store
 Thumbs.db
