@@ -1,0 +1,276 @@
+\section{Hình học Epipolar}
+\label{sec:epipolar_geometry}
+
+Trong các phần trước, chúng ta đã thấy rằng một ảnh đơn không đủ để suy ra cấu trúc 3D của thế giới do mất thông tin chiều sâu trong phép chiếu phối cảnh. Tuy nhiên, khi có nhiều hơn một ảnh của cùng một cảnh, một cấu trúc hình học mới xuất hiện: các ràng buộc giữa các phép chiếu khác nhau.
+
+Câu hỏi trung tâm lúc này là:
+
+\begin{center}
+	\textit{Nếu một điểm xuất hiện ở vị trí $\mathbf{x}$ trong ảnh thứ nhất, thì nó có thể xuất hiện ở đâu trong ảnh thứ hai?}
+\end{center}
+
+Hình học epipolar cung cấp một câu trả lời mạnh mẽ: vị trí tương ứng không thể tùy ý, mà bị ràng buộc trên một đường thẳng xác định. Điều này làm giảm đáng kể không gian tìm kiếm và là nền tảng của toàn bộ bài toán stereo và tái dựng 3D.
+
+\subsection{Thiết lập Bài toán Hai Camera}
+\label{subsec:two_view_setup}
+
+Xét hai camera:
+
+\[
+P = K[I|0], \quad P' = K'[R|t]
+\]
+
+Giả sử một điểm 3D $\mathbf{X}$ được chiếu thành:
+\[
+\mathbf{x} = P\mathbf{X}, \quad \mathbf{x}' = P'\mathbf{X}
+\]
+
+Từ định nghĩa của phép chiếu, ta biết:
+\begin{itemize}
+	\item $\mathbf{X}$ nằm trên tia chiếu đi qua tâm camera thứ nhất và $\mathbf{x}$
+	\item $\mathbf{X}$ cũng nằm trên tia chiếu đi qua tâm camera thứ hai và $\mathbf{x}'$
+\end{itemize}
+
+Hai tia này không song song và giao nhau tại $\mathbf{X}$, do đó chúng xác định một mặt phẳng duy nhất.
+
+\begin{mdframed}[style=infobox]
+	\textbf{Ý tưởng nền tảng}
+	
+	Mọi cặp điểm tương ứng giữa hai ảnh đều được sinh ra từ cùng một mặt phẳng epipolar. Đây là cấu trúc hình học cốt lõi của toàn bộ bài toán.
+\end{mdframed}
+
+\subsection{Mặt phẳng Epipolar và Đường Epipolar}
+\label{subsec:epipolar_plane}
+
+Mặt phẳng epipolar là mặt phẳng đi qua:
+\begin{itemize}
+	\item Tâm camera thứ nhất $\mathbf{C}$
+	\item Tâm camera thứ hai $\mathbf{C}'$
+	\item Điểm $\mathbf{X}$
+\end{itemize}
+
+Giao của mặt phẳng này với mỗi mặt phẳng ảnh tạo ra:
+\begin{itemize}
+	\item Đường epipolar $\ell$ trên ảnh thứ nhất
+	\item Đường epipolar $\ell'$ trên ảnh thứ hai
+\end{itemize}
+
+Điều quan trọng là:
+
+\begin{quote}
+	\textit{Nếu $\mathbf{x}$ là ảnh của $\mathbf{X}$ trong ảnh thứ nhất, thì điểm tương ứng $\mathbf{x}'$ trong ảnh thứ hai phải nằm trên đường $\ell'$.}
+\end{quote}
+
+\begin{mdframed}[style=infobox]
+	\textbf{Ý nghĩa tính toán}
+	
+	Bài toán matching từ 2D (tìm trên toàn ảnh) giảm xuống 1D (tìm trên một đường). Đây là lý do epipolar geometry làm cho stereo khả thi.
+\end{mdframed}
+
+\subsection{Epipole}
+\label{subsec:epipole}
+
+Epipole là giao điểm của đường nối hai tâm camera với mặt phẳng ảnh.
+
+\[
+\mathbf{e}' = P'\mathbf{C}, \quad \mathbf{e} = P\mathbf{C}'
+\]
+
+Tính chất quan trọng:
+
+\begin{itemize}
+	\item Mọi đường epipolar đều đi qua epipole
+	\item Epipole là ảnh của camera còn lại
+\end{itemize}
+
+\paragraph{Trường hợp đặc biệt}
+
+Nếu hai camera dịch chuyển song song (pure translation theo trục x), epipole nằm ở vô cực. Khi đó:
+\begin{itemize}
+	\item Các đường epipolar song song nhau
+	\item Stereo trở nên đơn giản (rectified images)
+\end{itemize}
+
+\subsection{Suy ra Ràng buộc Epipolar}
+\label{subsec:derivation_constraint}
+
+Ta sẽ suy ra phương trình cơ bản:
+
+\[
+\mathbf{x}'^T F \mathbf{x} = 0
+\]
+
+Giả sử $\mathbf{X}$ trong hệ camera thứ hai:
+
+\[
+\mathbf{X}' = R\mathbf{X} + t
+\]
+
+Vì $\mathbf{x}$ xác định một tia, ta có:
+\[
+\mathbf{X} = \lambda K^{-1}\mathbf{x}
+\]
+
+Thay vào:
+
+\[
+\mathbf{X}' = R(\lambda K^{-1}\mathbf{x}) + t
+\]
+
+Điểm $\mathbf{X}'$, $\mathbf{x}'$ và tâm camera phải thẳng hàng:
+
+\[
+\mathbf{x}' \times \mathbf{X}' = 0
+\]
+
+Khai triển và đưa về dạng ma trận, ta thu được:
+
+\[
+\mathbf{x}'^T [t]_\times R \mathbf{x} = 0
+\]
+
+Với hiệu chỉnh nội tại:
+
+\[
+F = K'^{-T} [t]_\times R K^{-1}
+\]
+
+\begin{mdframed}[style=infobox]
+	\textbf{Insight quan trọng}
+	
+	Ràng buộc epipolar không phải là giả thiết, mà là hệ quả tất yếu của hình học chiếu. Nó xuất phát trực tiếp từ điều kiện ba điểm thẳng hàng.
+\end{mdframed}
+
+\subsection{Ma trận Fundamental}
+\label{subsec:fundamental_matrix}
+
+Ma trận $F$ có các tính chất:
+
+\begin{itemize}
+	\item Kích thước $3 \times 3$
+	\item Hạng 2 (rank 2)
+	\item Có 7 bậc tự do
+\end{itemize}
+
+Vai trò:
+
+\begin{itemize}
+	\item Ánh xạ điểm $\mathbf{x}$ thành đường $\ell' = F\mathbf{x}$
+	\item Ánh xạ $\mathbf{x}'$ thành $\ell = F^T \mathbf{x}'$
+\end{itemize}
+
+\begin{mdframed}[style=infobox]
+	\textbf{Diễn giải sâu}
+	
+	$F$ là một toán tử ánh xạ từ không gian điểm sang không gian đường. Nó không mô tả hình học 3D, mà mô tả mối quan hệ giữa hai phép chiếu.
+\end{mdframed}
+
+\subsection{Ước lượng Ma trận Fundamental}
+\label{subsec:estimate_F}
+
+Từ:
+\[
+\mathbf{x}'^T F \mathbf{x} = 0
+\]
+
+mỗi cặp điểm cung cấp một phương trình tuyến tính theo các phần tử của $F$.
+
+\paragraph{Thuật toán 8-point}
+
+\begin{itemize}
+	\item Cần ít nhất 8 cặp điểm
+	\item Giải hệ $A\mathbf{f} = 0$
+	\item Áp dụng SVD
+	\item Ép hạng 2 bằng cách chỉnh singular values
+\end{itemize}
+
+\paragraph{Normalization}
+
+Cực kỳ quan trọng:
+\begin{itemize}
+	\item Scale dữ liệu về trung tâm
+	\item Nếu không, nghiệm không ổn định
+\end{itemize}
+
+\begin{mdframed}[style=infobox]
+	\textbf{Cảnh báo thực tế}
+	
+	Thuật toán 8-point “thô” gần như luôn cho kết quả kém nếu không chuẩn hóa dữ liệu trước.
+\end{mdframed}
+
+\subsection{Essential Matrix}
+\label{subsec:essential_matrix}
+
+Nếu camera đã được hiệu chỉnh nội tại:
+
+\[
+E = [t]_\times R
+\]
+
+và:
+
+\[
+\mathbf{x}'^T E \mathbf{x} = 0
+\]
+
+với $\mathbf{x}$ là tọa độ chuẩn hóa.
+
+\paragraph{So sánh $E$ và $F$}
+
+\begin{itemize}
+	\item $F$: áp dụng cho pixel
+	\item $E$: áp dụng cho normalized coordinates
+\end{itemize}
+
+\begin{mdframed}[style=infobox]
+	\textbf{Insight}
+	
+	$E$ chứa thông tin hình học “thuần túy” (rotation + translation), trong khi $F$ bị “nhiễu” bởi nội tại camera.
+\end{mdframed}
+
+\subsection{Các Trường hợp Suy biến}
+\label{subsec:degeneracy}
+
+Epipolar geometry có thể thất bại trong một số trường hợp:
+
+\begin{itemize}
+	\item Tất cả điểm nằm trên một mặt phẳng
+	\item Chuyển động thuần quay (pure rotation)
+	\item Baseline quá nhỏ
+\end{itemize}
+
+Trong các trường hợp này:
+\begin{itemize}
+	\item $F$ không xác định tốt
+	\item Matching trở nên không ổn định
+\end{itemize}
+
+\subsection{Ý nghĩa trong Thực tế}
+\label{subsec:epipolar_practice}
+
+Trong stereo vision:
+\begin{itemize}
+	\item Giảm không gian tìm kiếm
+	\item Cho phép real-time matching
+\end{itemize}
+
+Trong SfM:
+\begin{itemize}
+	\item Bước đầu để ước lượng chuyển động camera
+	\item Dẫn đến triangulation
+\end{itemize}
+
+\subsection{Kết luận}
+\label{subsec:epipolar_conclusion}
+
+Hình học epipolar là cấu trúc cơ bản xuất hiện khi có hai góc nhìn của cùng một cảnh. Nó không chỉ giảm độ phức tạp của bài toán matching, mà còn cung cấp một ràng buộc toán học mạnh mẽ liên kết các phép chiếu.
+
+Quan trọng hơn, nó là nền tảng cho:
+\begin{itemize}
+	\item Fundamental matrix
+	\item Essential matrix
+	\item Triangulation
+	\item Structure from Motion
+\end{itemize}
+
+Hiểu sâu epipolar geometry là bước chuyển từ “xử lý ảnh” sang “hiểu hình học của thế giới”.

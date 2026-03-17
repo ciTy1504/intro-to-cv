@@ -1,0 +1,235 @@
+\section{Ma trận Chiếu Camera}
+\label{sec:camera_projection_matrix}
+
+Trong các phần trước, chúng ta đã xây dựng từng thành phần của mô hình camera một cách tách biệt:
+\begin{itemize}
+	\item Mô hình chiếu phối cảnh từ không gian 3D sang mặt phẳng ảnh
+	\item Ma trận nội tại $K$ mô tả đặc tính quang học và cảm biến
+	\item Tham số ngoại tại $(R, t)$ mô tả vị trí và hướng của camera
+\end{itemize}
+
+Mỗi thành phần trên giải quyết một khía cạnh riêng của quá trình tạo ảnh. Tuy nhiên, trong thực tế, chúng không tồn tại độc lập mà luôn hoạt động như một hệ thống thống nhất.
+
+Mục tiêu của phần này là hợp nhất toàn bộ các thành phần đó thành một biểu thức duy nhất, gọn gàng và mạnh mẽ: \textbf{ma trận chiếu camera (camera projection matrix)}.
+
+Đây không chỉ là một phép rút gọn ký hiệu, mà là một bước chuyển quan trọng từ hình học Euclid sang \textbf{hình học xạ ảnh (projective geometry)} — nền tảng toán học cốt lõi của thị giác máy tính hiện đại.
+
+\subsection{Từ Chuỗi Biến đổi đến Một Phép Biến đổi Duy nhất}
+\label{subsec:projection_pipeline}
+
+Quá trình ánh xạ từ một điểm 3D trong hệ tọa độ thế giới đến một điểm pixel trên ảnh thực chất là một chuỗi các phép biến đổi:
+
+\[
+\mathbf{P}_w \xrightarrow{[R|t]} \mathbf{P}_c \xrightarrow{\text{projection}} \mathbf{p}_{image} \xrightarrow{K} \mathbf{p}
+\]
+
+Trong đó:
+\begin{itemize}
+	\item $[R|t]$: biến đổi từ hệ tọa độ thế giới sang hệ tọa độ camera
+	\item projection: phép chiếu phối cảnh (chia cho $Z_c$)
+	\item $K$: chuyển từ hệ tọa độ ảnh liên tục sang hệ pixel rời rạc
+\end{itemize}
+
+Một cách trực giác, ta có thể hiểu pipeline này như sau:
+\begin{enumerate}
+	\item Đặt camera tại gốc tọa độ (extrinsic)
+	\item Chiếu điểm 3D lên mặt phẳng ảnh (projection)
+	\item Quy đổi sang pixel (intrinsic)
+\end{enumerate}
+
+Điểm quan trọng là: mặc dù pipeline này gồm nhiều bước phi tuyến (do phép chia), ta có thể biểu diễn toàn bộ quá trình dưới dạng \textbf{một phép biến đổi tuyến tính trong không gian thuần nhất}.
+
+Đây chính là lý do tại sao tọa độ thuần nhất đóng vai trò trung tâm.
+
+\subsection{Định nghĩa Ma trận Chiếu}
+\label{subsec:projection_definition}
+
+Ma trận chiếu camera $P$ được định nghĩa là:
+
+\[
+P = K [R | t]
+\]
+
+với:
+\begin{itemize}
+	\item $P \in \mathbb{R}^{3 \times 4}$
+	\item $K \in \mathbb{R}^{3 \times 3}$
+	\item $[R|t] \in \mathbb{R}^{3 \times 4}$
+\end{itemize}
+
+Khi đó, phép chiếu được viết gọn:
+
+\[
+s \mathbf{p} = P \mathbf{P}_w
+\]
+
+Trong đó:
+\begin{itemize}
+	\item $\mathbf{P}_w$ là điểm 3D trong tọa độ thuần nhất
+	\item $\mathbf{p}$ là điểm ảnh trong tọa độ thuần nhất
+	\item $s$ là hệ số tỷ lệ (scale)
+\end{itemize}
+
+\begin{mdframed}[style=infobox]
+	\textbf{Ý nghĩa quan trọng}
+	
+	Toàn bộ quá trình từ thế giới 3D đến ảnh 2D được nén lại thành một phép nhân ma trận duy nhất. Điều này cho phép chúng ta áp dụng toàn bộ công cụ của đại số tuyến tính vào bài toán thị giác.
+\end{mdframed}
+
+\subsection{Phân tích Cấu trúc của $P$}
+\label{subsec:projection_structure}
+
+Ma trận $P$ có thể được viết dưới dạng:
+
+\[
+P =
+\begin{bmatrix}
+	p_1^T \\
+	p_2^T \\
+	p_3^T
+\end{bmatrix}
+\]
+
+Khi nhân với $\mathbf{P}_w = (X, Y, Z, 1)^T$, ta thu được:
+
+\[
+\begin{aligned}
+	u &= \frac{p_1^T \mathbf{P}_w}{p_3^T \mathbf{P}_w} \\
+	v &= \frac{p_2^T \mathbf{P}_w}{p_3^T \mathbf{P}_w}
+\end{aligned}
+\]
+
+Biểu thức này cho thấy rõ bản chất của phép chiếu phối cảnh: tọa độ pixel không phải là kết quả của một phép biến đổi tuyến tính đơn giản, mà là tỷ số giữa các biểu thức tuyến tính.
+
+\begin{mdframed}[style=infobox]
+	\textbf{Insight quan trọng}
+	
+	Phép chiếu camera là một phép biến đổi xạ ảnh (projective transformation), không phải affine. Việc xuất hiện phép chia chính là dấu hiệu đặc trưng của hình học xạ ảnh.
+\end{mdframed}
+
+Một hệ quả quan trọng là: các phép biến đổi này chỉ xác định đến một hệ số tỷ lệ, dẫn đến việc chúng ta làm việc trong không gian thuần nhất thay vì không gian Euclid thông thường.
+
+\subsection{Không gian Hạt nhân và Tâm Camera}
+\label{subsec:camera_center}
+
+Một tính chất cơ bản nhưng cực kỳ quan trọng của ma trận chiếu là:
+
+\[
+P \mathbf{C} = 0
+\]
+
+trong đó $\mathbf{C}$ là tâm camera trong tọa độ thuần nhất.
+
+Điều này có nghĩa là:
+\begin{itemize}
+	\item $\mathbf{C}$ nằm trong \textbf{kernel (null space)} của $P$
+	\item $P$ có hạng 3
+\end{itemize}
+
+Từ đây, ta có thể suy ra vị trí camera:
+
+\[
+\mathbf{C} = -R^T t
+\]
+
+\begin{mdframed}[style=infobox]
+	\textbf{Diễn giải Hình học}
+	
+	Tâm camera là điểm mà từ đó mọi tia chiếu xuất phát. Vì tất cả các điểm trên cùng một tia đều được chiếu về cùng một pixel, nên riêng tâm camera không có ảnh xác định — nó bị “triệt tiêu” bởi phép chiếu.
+\end{mdframed}
+
+\subsection{Bậc Tự do (Degrees of Freedom)}
+\label{subsec:projection_dof}
+
+Ma trận $P$ có 12 phần tử, nhưng chỉ xác định đến một hệ số tỷ lệ:
+
+\[
+\text{DoF}(P) = 11
+\]
+
+So sánh với các thành phần:
+\begin{itemize}
+	\item $R$: 3 DoF
+	\item $t$: 3 DoF
+	\item $K$: 5 DoF
+\end{itemize}
+
+Tổng cộng:
+\[
+3 + 3 + 5 = 11
+\]
+
+\begin{mdframed}[style=infobox]
+	\textbf{Insight quan trọng}
+	
+	Sự khớp chính xác về số bậc tự do cho thấy rằng mô hình $P = K[R|t]$ là đầy đủ và không dư thừa. Đây là một kiểm chứng quan trọng về tính đúng đắn của mô hình.
+\end{mdframed}
+
+\subsection{Phân rã Ma trận Chiếu}
+\label{subsec:projection_decomposition}
+
+Một bài toán trung tâm trong thực hành là: cho trước $P$, tìm lại $K$, $R$, và $t$.
+
+Điều này được thực hiện thông qua phân rã RQ:
+
+\[
+P = K [R | t]
+\]
+
+Trong đó:
+\begin{itemize}
+	\item $K$ là ma trận tam giác trên (intrinsic)
+	\item $R$ là ma trận quay (extrinsic)
+\end{itemize}
+
+\begin{mdframed}[style=infobox]
+	\textbf{Lưu ý thực tế}
+	
+	Phân rã này không duy nhất. Cần áp đặt thêm các ràng buộc như $f_x, f_y > 0$ và đảm bảo $R \in SO(3)$ để nghiệm có ý nghĩa vật lý.
+\end{mdframed}
+
+\subsection{Ý nghĩa Hình học Tổng quát}
+\label{subsec:projection_geometry}
+
+Ma trận chiếu thực hiện một ánh xạ:
+
+\[
+\mathbb{P}^3 \rightarrow \mathbb{P}^2
+\]
+
+Đây là một ánh xạ xạ ảnh, với các tính chất:
+
+\begin{itemize}
+	\item Bảo toàn tính thẳng hàng (collinearity)
+	\item Không bảo toàn khoảng cách
+	\item Không bảo toàn góc
+	\item Không bảo toàn tính song song
+\end{itemize}
+
+\begin{mdframed}[style=infobox]
+	\textbf{Hệ quả quan trọng}
+	
+	Các đường thẳng song song trong không gian có thể hội tụ tại một điểm trên ảnh (vanishing point). Đây là hiện tượng phổ quát trong ảnh phối cảnh.
+\end{mdframed}
+
+Một cách diễn giải sâu hơn: ma trận chiếu làm “mất” một chiều thông tin (chiều sâu), và chính sự mất mát này là nguyên nhân khiến bài toán thị giác máy tính trở thành một bài toán nghịch đảo (inverse problem).
+
+\subsection{Kết luận}
+\label{subsec:projection_conclusion}
+
+Ma trận chiếu camera là biểu diễn cô đọng nhất của toàn bộ quá trình tạo ảnh. Nó hợp nhất hình học, vật lý và hệ tọa độ vào một cấu trúc đại số duy nhất.
+
+Việc hiểu rõ ma trận này không chỉ giúp triển khai các thuật toán cơ bản, mà còn mở ra cánh cửa đến các chủ đề nâng cao như:
+\begin{itemize}
+	\item Hình học đa ảnh (multi-view geometry)
+	\item Epipolar geometry
+	\item 3D reconstruction
+\end{itemize}
+
+Trong các phần tiếp theo, chúng ta sẽ khai thác cấu trúc của $P$ khi có nhiều camera, từ đó suy luận thông tin hình học của thế giới ba chiều từ nhiều ảnh hai chiều.
+
+\section*{Tài liệu tham khảo}
+\begin{itemize}
+	\item[1] Hartley, R., \& Zisserman, A. (2003). \textit{Multiple View Geometry in Computer Vision}. Cambridge University Press.
+	\item[2] Szeliski, R. (2010). \textit{Computer Vision: Algorithms and Applications}. Springer.
+\end{itemize}

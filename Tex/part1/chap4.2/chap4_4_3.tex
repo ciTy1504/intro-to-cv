@@ -1,0 +1,209 @@
+\section{Tham số Nội tại của Camera}
+\label{sec:intrinsic_parameters}
+
+Trong phần trước, chúng ta đã mô tả cách một điểm trong không gian được chiếu lên mặt phẳng ảnh thông qua phép chiếu phối cảnh. Tuy nhiên, mô hình đó vẫn còn lý tưởng hóa: nó giả định rằng hệ tọa độ ảnh đã được chuẩn hóa và bỏ qua các đặc điểm vật lý của camera thực tế.
+
+Nói cách khác, mô hình pinhole cơ bản chỉ cho chúng ta biết "hình học thuần túy" của quá trình chiếu, nhưng chưa trả lời câu hỏi quan trọng: làm thế nào hình ảnh này được biểu diễn trong một thiết bị số thực tế?
+
+Trong thực tế, hình ảnh không được biểu diễn trong một hệ tọa độ liên tục, mà dưới dạng một lưới các pixel rời rạc. Ngoài ra, các đặc tính vật lý như tiêu cự, vị trí tâm ảnh, và hình dạng pixel đều ảnh hưởng trực tiếp đến cách một điểm 3D được ánh xạ lên ảnh.
+
+Những yếu tố này được mô tả bởi \textbf{tham số nội tại của camera (intrinsic parameters)}, thường được biểu diễn dưới dạng một ma trận $K$ \cite{Hartley2003, Szeliski2010}.
+
+Một cách trực quan, nếu phép chiếu phối cảnh trả lời câu hỏi:
+\begin{quote}
+	"Làm thế nào một điểm 3D được chiếu lên mặt phẳng ảnh?"
+\end{quote}
+
+thì ma trận nội tại trả lời câu hỏi:
+\begin{quote}
+	"Làm thế nào điểm đó được biểu diễn trên cảm biến ảnh (pixel grid)?"
+\end{quote}
+
+\subsection{Từ Tọa độ Ảnh đến Tọa độ Pixel}
+\label{subsec:image_to_pixel}
+
+Trong mô hình pinhole, ta có tọa độ ảnh:
+
+\[
+(x, y) = \left(\frac{X_c}{Z_c}, \frac{Y_c}{Z_c}\right)
+\]
+
+Tuy nhiên, $(x, y)$:
+\begin{itemize}
+	\item Là tọa độ liên tục
+	\item Có đơn vị vật lý (ví dụ: mm)
+\end{itemize}
+
+Điều này có nghĩa là $(x, y)$ vẫn đang sống trong một "không gian lý tưởng", nơi mà ảnh được xem như một mặt phẳng liên tục. Trong khi đó, ảnh thực tế được tạo thành từ các pixel rời rạc, mỗi pixel chiếm một diện tích hữu hạn trên cảm biến.
+
+Do đó, để chuyển từ hệ tọa độ ảnh sang hệ tọa độ pixel $(u, v)$, ta cần thực hiện hai phép biến đổi cơ bản:
+
+\begin{enumerate}
+	\item \textbf{Scale (tỷ lệ):} chuyển từ đơn vị vật lý (mm) sang pixel
+	\item \textbf{Translation (tịnh tiến):} dịch gốc tọa độ về hệ quy chiếu của ảnh số
+\end{enumerate}
+
+Quan trọng hơn, hai phép biến đổi này không phải là tùy ý, mà phản ánh trực tiếp cấu trúc vật lý của cảm biến và cách dữ liệu được lưu trữ trong bộ nhớ.
+
+\subsection{Các Thành phần của Ma trận Nội tại}
+\label{subsec:intrinsic_components}
+
+Ma trận nội tại $K$ có dạng tổng quát:
+
+\[
+K =
+\begin{bmatrix}
+	f_x & s & c_x \\
+	0   & f_y & c_y \\
+	0   & 0   & 1
+\end{bmatrix}
+\]
+
+Ma trận này có thể được hiểu như sự kết hợp của nhiều phép biến đổi đơn giản: co giãn (scaling), cắt xiên (shear), và tịnh tiến (translation). Mỗi phần tử trong ma trận đều mang một ý nghĩa hình học cụ thể.
+
+\subsubsection{Tiêu cự theo Pixel ($f_x, f_y$)}
+
+\[
+f_x = f \cdot m_x, \quad f_y = f \cdot m_y
+\]
+
+với:
+\begin{itemize}
+	\item $f$ là tiêu cự vật lý (đơn vị mm)
+	\item $m_x, m_y$ là hệ số chuyển đổi từ mm sang pixel theo từng trục
+\end{itemize}
+
+Hai tham số này thực chất là sự kết hợp giữa hình học (tiêu cự) và đặc tính cảm biến (pixel density).
+
+Một điểm quan trọng cần nhấn mạnh là: trong biểu thức $x = f \frac{X}{Z}$ trước đó, $f$ được đo theo đơn vị vật lý. Nhưng trong hệ pixel, chúng ta cần một đại lượng tương đương đo bằng pixel — đó chính là $f_x, f_y$.
+
+\begin{mdframed}[style=infobox]
+	\textbf{Trực giác: Vai trò của $f_x, f_y$}
+	
+	Có thể xem $f_x, f_y$ như các hệ số "phóng đại" ảnh theo từng trục. Giá trị càng lớn thì ảnh càng "zoom in", và ngược lại.
+	
+	Điều này giải thích tại sao thay đổi tiêu cự trong camera thực tế sẽ làm thay đổi góc nhìn (field of view).
+\end{mdframed}
+
+\begin{mdframed}[style=infobox]
+	\textbf{Tại sao có hai giá trị khác nhau?}
+	
+	Trong một camera lý tưởng, pixel là hình vuông và $f_x = f_y$. Tuy nhiên, trong thực tế:
+	\begin{itemize}
+		\item Pixel có thể không hoàn toàn vuông
+		\item Hệ thống đọc dữ liệu theo hai trục có thể khác nhau
+	\end{itemize}
+	
+	Do đó, việc tách riêng $f_x$ và $f_y$ giúp mô hình linh hoạt hơn và phù hợp với dữ liệu thực tế.
+\end{mdframed}
+
+\subsubsection{Tâm ảnh ($c_x, c_y$)}
+
+Đây là tọa độ của \textbf{principal point}, tức là giao điểm giữa trục quang học và mặt phẳng ảnh.
+
+\begin{itemize}
+	\item Thường nằm gần trung tâm ảnh
+	\item Không nhất thiết chính xác ở giữa
+\end{itemize}
+
+Trong mô hình lý tưởng, ta thường giả định tâm ảnh nằm tại $(0,0)$. Tuy nhiên, trong camera thực tế, do sai lệch trong quá trình chế tạo và lắp ráp, điểm này có thể bị lệch đi một khoảng nhỏ.
+
+Vai trò của $(c_x, c_y)$ là dịch chuyển hệ tọa độ từ một hệ có gốc tại tâm ảnh sang hệ có gốc tại góc ảnh (như trong biểu diễn pixel).
+
+\begin{mdframed}[style=infobox]
+	\textbf{Insight quan trọng}
+	
+	Nếu bạn thấy một hệ thống yêu cầu "normalize image coordinates", rất có thể bước đầu tiên là trừ đi $(c_x, c_y)$ để đưa về hệ tọa độ centered.
+\end{mdframed}
+
+\subsubsection{Hệ số lệch (Skew $s$)}
+
+Tham số $s$ mô tả độ lệch giữa hai trục pixel:
+
+\begin{itemize}
+	\item $s = 0$ trong hầu hết camera hiện đại
+	\item $s \neq 0$ khi các trục không vuông góc
+\end{itemize}
+
+Về mặt hình học, skew tương ứng với một phép biến đổi shear, làm cho các ô pixel bị "nghiêng" thay vì vuông góc hoàn hảo.
+
+\begin{mdframed}[style=infobox]
+	\textbf{Thực tế: Skew gần như luôn bằng 0}
+	
+	Trong các cảm biến hiện đại, các pixel được thiết kế gần như hoàn hảo, do đó hệ số skew thường được bỏ qua. Tuy nhiên, việc giữ tham số này giúp mô hình tổng quát hơn và tương thích với các hệ thống cũ hoặc dữ liệu đặc biệt.
+\end{mdframed}
+
+\subsection{Biểu diễn Ma trận}
+\label{subsec:intrinsic_matrix_form}
+
+Kết hợp tất cả các thành phần, phép biến đổi từ tọa độ ảnh sang pixel có thể viết:
+
+\[
+\begin{bmatrix}
+	u \\
+	v \\
+	1
+\end{bmatrix}
+=
+K
+\begin{bmatrix}
+	x \\
+	y \\
+	1
+\end{bmatrix}
+\]
+
+hay:
+
+\[
+\mathbf{p} = K \mathbf{p}_{image}
+\]
+
+Một cách hiểu sâu hơn là: ma trận $K$ đóng vai trò như một "bộ chuyển đổi" giữa hai thế giới — từ hình học liên tục sang biểu diễn rời rạc.
+
+Khi kết hợp với phép chiếu phối cảnh, ta được:
+
+\[
+s \mathbf{p} = K \mathbf{P}_c
+\]
+
+Phương trình này là một trong những biểu thức quan trọng nhất trong toàn bộ hình học camera.
+
+\subsection{Ý nghĩa Hình học}
+\label{subsec:intrinsic_geometry}
+
+Ma trận nội tại $K$ không phụ thuộc vào vị trí của camera trong thế giới. Nó chỉ mô tả các đặc tính bên trong của camera:
+
+\begin{itemize}
+	\item Hệ quang học (tiêu cự)
+	\item Cảm biến (pixel size)
+	\item Căn chỉnh (principal point, skew)
+\end{itemize}
+
+Một cách nhìn khác là: nếu chúng ta giữ nguyên camera và chỉ thay đổi môi trường xung quanh, thì $K$ sẽ không thay đổi. Ngược lại, nếu chúng ta thay đổi camera (ví dụ: zoom, thay sensor), thì $K$ sẽ thay đổi ngay cả khi cảnh không đổi.
+
+\begin{mdframed}[style=infobox]
+	\textbf{Phân tách rõ ràng: Nội tại vs Ngoại tại}
+	
+	\begin{itemize}
+		\item $K$ trả lời câu hỏi: "Camera nhìn thế giới như thế nào?"
+		\item $R, t$ trả lời câu hỏi: "Camera đang ở đâu trong thế giới?"
+	\end{itemize}
+	
+	Sự tách biệt này là nền tảng của toàn bộ bài toán hiệu chỉnh camera.
+\end{mdframed}
+
+\subsection{Kết luận}
+\label{subsec:intrinsic_conclusion}
+
+Tham số nội tại của camera cung cấp cầu nối giữa mô hình hình học lý tưởng và dữ liệu ảnh thực tế. Bằng cách mô hình hóa các đặc tính vật lý của camera, ma trận $K$ cho phép chúng ta ánh xạ chính xác từ tọa độ liên tục sang hệ pixel rời rạc.
+
+Quan trọng hơn, việc hiểu sâu ma trận nội tại không chỉ giúp chúng ta sử dụng các thuật toán có sẵn, mà còn giúp chúng ta hiểu được bản chất của các sai số và giới hạn trong hệ thống thị giác.
+
+Trong phần tiếp theo, chúng ta sẽ xem xét các tham số ngoại tại $(R, t)$, hoàn thiện mô hình biến đổi từ thế giới ba chiều đến ảnh hai chiều.
+
+\section*{Tài liệu tham khảo}
+\begin{itemize}
+	\item[1] Hartley, R., \& Zisserman, A. (2003). \textit{Multiple View Geometry in Computer Vision}. Cambridge University Press.
+	\item[2] Szeliski, R. (2010). \textit{Computer Vision: Algorithms and Applications}. Springer.
+\end{itemize}

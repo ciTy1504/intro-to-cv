@@ -1,0 +1,20 @@
+# LaTeX build files
+*.aux
+*.log
+*.out
+*.toc
+*.bbl
+*.blg
+*.synctex.gz
+*.fls
+*.fdb_latexmk
+
+# Minted
+_minted/
+
+# PDF (optional)
+*.pdf
+
+# OS
+.DS_Store
+Thumbs.db

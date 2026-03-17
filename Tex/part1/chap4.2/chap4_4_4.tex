@@ -1,0 +1,240 @@
+\section{Tham số Ngoại tại của Camera}
+\label{sec:extrinsic_parameters}
+
+Trong khi ma trận nội tại $K$ mô tả cách camera biến đổi các tia sáng thành tọa độ pixel, nó hoàn toàn không cung cấp thông tin về vị trí của camera trong không gian. Nói cách khác, $K$ chỉ mô tả “cách camera nhìn”, nhưng không cho biết “camera đang đứng ở đâu”.
+
+Để xây dựng một mô hình đầy đủ, chúng ta cần trả lời một câu hỏi cơ bản hơn và mang tính hình học sâu sắc hơn: \textit{camera đang ở đâu và đang nhìn theo hướng nào trong không gian ba chiều?}
+
+Câu hỏi này được giải quyết bởi \textbf{tham số ngoại tại (extrinsic parameters)}, bao gồm một phép quay $R$ và một phép tịnh tiến $t$. Hai thành phần này xác định mối quan hệ giữa hệ tọa độ thế giới và hệ tọa độ camera \cite{Hartley2003, Szeliski2010}.
+
+Một cách khái quát, nếu ma trận nội tại liên quan đến “cấu trúc bên trong” của camera, thì tham số ngoại tại liên quan đến “vị trí và tư thế (pose)” của camera trong môi trường.
+
+\subsection{Bài toán: Biến đổi Hệ tọa độ}
+\label{subsec:extrinsic_problem}
+
+Giả sử một điểm trong hệ tọa độ thế giới:
+
+\[
+\mathbf{P}_w = (X_w, Y_w, Z_w)^T
+\]
+
+Mục tiêu là biểu diễn điểm này trong hệ tọa độ camera:
+
+\[
+\mathbf{P}_c = (X_c, Y_c, Z_c)^T
+\]
+
+Về bản chất, đây không phải là một phép chiếu, mà là một \textbf{phép thay đổi hệ quy chiếu}. Chúng ta không thay đổi bản thân điểm $\mathbf{P}$, mà chỉ thay đổi cách biểu diễn của nó trong một hệ tọa độ khác.
+
+Phép biến đổi tổng quát giữa hai hệ tọa độ Euclid là một phép biến đổi cứng (rigid transformation), bao gồm:
+\begin{itemize}
+	\item Một phép quay $R \in \mathbb{R}^{3 \times 3}$
+	\item Một phép tịnh tiến $t \in \mathbb{R}^{3}$
+\end{itemize}
+
+Do đó:
+
+\[
+\mathbf{P}_c = R \mathbf{P}_w + t
+\]
+
+Điều quan trọng cần nhấn mạnh là phép biến đổi này \textbf{bảo toàn cấu trúc hình học}: khoảng cách và góc giữa các điểm không bị thay đổi.
+
+\subsection{Ma trận Quay và Nhóm SO(3)}
+\label{subsec:rotation_matrix}
+
+Ma trận quay $R$ không phải là một ma trận bất kỳ. Nó thuộc về nhóm quay đặc biệt:
+
+\[
+R \in SO(3)
+\]
+
+được định nghĩa bởi:
+
+\[
+R^T R = I, \quad \det(R) = 1
+\]
+
+Hai điều kiện này có ý nghĩa hình học rất sâu:
+
+\begin{itemize}
+	\item $R^T R = I$: các cột của $R$ trực chuẩn $\Rightarrow$ bảo toàn độ dài và góc
+	\item $\det(R) = 1$: loại bỏ các phép phản chiếu (reflection)
+\end{itemize}
+
+\begin{mdframed}[style=infobox]
+	\textbf{Ý nghĩa Hình học của $SO(3)$}
+	
+	$SO(3)$ là tập hợp tất cả các phép quay trong không gian ba chiều quanh gốc tọa độ. Điều kiện trực giao đảm bảo rằng phép biến đổi không làm méo hình, chỉ thay đổi hướng quan sát.
+\end{mdframed}
+
+Một cách nhìn cực kỳ quan trọng (và thường bị bỏ qua) là:
+
+\begin{quote}
+	\textit{Các cột của $R$ chính là các trục của hệ tọa độ camera được biểu diễn trong hệ tọa độ thế giới.}
+\end{quote}
+
+Cụ thể:
+\begin{itemize}
+	\item Cột 1: hướng trục $X_c$ trong world
+	\item Cột 2: hướng trục $Y_c$ trong world
+	\item Cột 3: hướng trục $Z_c$ (hướng nhìn của camera)
+\end{itemize}
+
+Điều này cung cấp một cách diễn giải trực tiếp: $R$ không chỉ là ma trận toán học, mà là cách camera “định hướng” trong không gian.
+
+\subsection{Vector Tịnh tiến}
+\label{subsec:translation_vector}
+
+Vector $t$ mô tả vị trí của gốc hệ tọa độ thế giới trong hệ tọa độ camera.
+
+Tuy nhiên, trong thực tế, ta thường quan tâm đến vị trí của camera trong hệ tọa độ thế giới, ký hiệu là $\mathbf{C}$. Hai đại lượng này liên hệ với nhau bởi:
+
+\[
+t = -R \mathbf{C}
+\]
+
+Đây là một trong những công thức quan trọng nhất nhưng cũng dễ gây nhầm lẫn nhất.
+
+\begin{mdframed}[style=infobox]
+	\textbf{Trực giác quan trọng: Camera vs Thế giới}
+	
+	Có hai cách diễn giải:
+	\begin{itemize}
+		\item Camera di chuyển trong thế giới
+		\item Thế giới di chuyển quanh camera
+	\end{itemize}
+	
+	Trong thị giác máy tính, ta luôn chọn cách thứ hai. Điều này dẫn đến việc $t$ không phải là vị trí của camera, mà là vị trí của thế giới trong hệ camera.
+\end{mdframed}
+
+Một cách viết lại phương trình giúp trực giác hơn:
+
+\[
+\mathbf{P}_c = R(\mathbf{P}_w - \mathbf{C})
+\]
+
+Ở đây:
+\begin{itemize}
+	\item $\mathbf{C}$ là vị trí camera trong world
+	\item Ta dịch chuyển điểm về gốc camera, sau đó quay
+\end{itemize}
+
+\subsection{Biểu diễn Thuần nhất và Nhóm SE(3)}
+\label{subsec:se3_representation}
+
+Để kết hợp quay và tịnh tiến trong một biểu thức duy nhất, ta sử dụng tọa độ thuần nhất:
+
+\[
+\mathbf{P}_c =
+\begin{bmatrix}
+	R & t \\
+	0 & 1
+\end{bmatrix}
+\mathbf{P}_w
+\]
+
+Ma trận này thuộc nhóm biến đổi Euclid đặc biệt:
+
+\[
+SE(3)
+\]
+
+\begin{mdframed}[style=infobox]
+	\textbf{$SE(3)$ là gì?}
+	
+	$SE(3)$ (Special Euclidean Group) là tập hợp tất cả các phép biến đổi cứng trong không gian 3D. Nó kết hợp:
+	\begin{itemize}
+		\item Quay ($SO(3)$)
+		\item Tịnh tiến ($\mathbb{R}^3$)
+	\end{itemize}
+	
+	Đây là cấu trúc toán học nền tảng cho robot học, SLAM, và thị giác máy tính.
+\end{mdframed}
+
+Một điểm sâu hơn: $SE(3)$ không chỉ là tập hợp ma trận, mà còn là một \textbf{nhóm Lie}. Điều này cho phép chúng ta làm việc với các biểu diễn vi phân (Lie algebra), cực kỳ quan trọng trong tối ưu hóa và estimation.
+
+\subsection{Ma trận Ngoại tại}
+\label{subsec:extrinsic_matrix}
+
+Trong thực tế, ta thường viết gọn:
+
+\[
+[R | t]
+\]
+
+đây là một ma trận $3 \times 4$, thực hiện phép biến đổi:
+
+\[
+\mathbf{P}_c = [R|t] \mathbf{P}_w
+\]
+
+Cần lưu ý rằng đây không phải là một phép biến đổi đầy đủ trong không gian 4D, mà là một cách viết rút gọn của phép biến đổi thuần nhất.
+
+Khi kết hợp với ma trận nội tại, ta thu được mô hình camera đầy đủ:
+
+\[
+s \mathbf{p} = K [R|t] \mathbf{P}_w
+\]
+
+Đây chính là phương trình trung tâm của toàn bộ hình học camera.
+
+\subsection{Phân tích Hình học}
+\label{subsec:extrinsic_geometry}
+
+Phép biến đổi ngoại tại có thể được hiểu như một chuỗi hai bước:
+
+\begin{enumerate}
+	\item \textbf{Tịnh tiến:} dịch chuyển điểm sao cho camera trở thành gốc tọa độ
+	\item \textbf{Quay:} căn chỉnh trục của thế giới với trục của camera
+\end{enumerate}
+
+Tuy nhiên, cần lưu ý rằng trong biểu thức $R\mathbf{P} + t$, phép quay được áp dụng trước, sau đó mới tịnh tiến. Sự khác biệt giữa trực giác và biểu thức toán học là một nguồn gây nhầm lẫn phổ biến.
+
+Một cách nhìn đúng hơn là:
+
+\[
+\mathbf{P}_c = R(\mathbf{P}_w - \mathbf{C})
+\]
+
+Cách nhìn này thường dễ hiểu hơn trong các bài toán như:
+\begin{itemize}
+	\item Pose estimation
+	\item Structure from Motion
+	\item Visual SLAM
+\end{itemize}
+
+\subsection{Các Lỗi Thường gặp}
+\label{subsec:extrinsic_common_mistakes}
+
+Một số nhầm lẫn phổ biến:
+
+\begin{itemize}
+	\item Nhầm $t$ là vị trí của camera (trong khi thực tế $t = -RC$)
+	\item Sử dụng sai thứ tự biến đổi (quay trước hay tịnh tiến trước)
+	\item Không phân biệt rõ hệ tọa độ đang làm việc (world vs camera)
+	\item Nhầm lẫn giữa $R$ và $R^T$ khi chuyển đổi ngược
+\end{itemize}
+
+Những sai sót này thường dẫn đến lỗi nghiêm trọng trong thực nghiệm, đặc biệt trong các hệ thống đa camera hoặc khi làm việc với dữ liệu thực.
+
+\subsection{Kết luận}
+\label{subsec:extrinsic_conclusion}
+
+Tham số ngoại tại đóng vai trò cầu nối giữa thế giới vật lý và camera. Chúng xác định cách camera được đặt trong không gian và cách nó quan sát cảnh vật.
+
+Khi kết hợp với ma trận nội tại, chúng tạo thành mô hình camera hoàn chỉnh:
+
+\[
+s \mathbf{p} = K [R|t] \mathbf{P}
+\]
+
+Quan trọng hơn, việc hiểu sâu tham số ngoại tại không chỉ giúp xây dựng mô hình camera, mà còn là nền tảng cho nhiều bài toán cốt lõi trong thị giác máy tính hiện đại, từ định vị camera đến tái tạo cấu trúc 3D.
+
+Trong phần tiếp theo, chúng ta sẽ xem xét cách kết hợp hai thành phần này thành một ma trận chiếu duy nhất, cung cấp một biểu diễn gọn gàng và mạnh mẽ cho toàn bộ quá trình tạo ảnh.
+
+\section*{Tài liệu tham khảo}
+\begin{itemize}
+	\item[1] Hartley, R., \& Zisserman, A. (2003). \textit{Multiple View Geometry in Computer Vision}. Cambridge University Press.
+	\item[2] Szeliski, R. (2010). \textit{Computer Vision: Algorithms and Applications}. Springer.
+\end{itemize}

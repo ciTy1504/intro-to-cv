@@ -1,0 +1,52 @@
+\chapter{Hình học Camera: Từ Thế giới 3D đến Ảnh 2D}
+\label{chap:camera_geometry}
+
+%----------------------------------------------------------------------------------------
+%	INTRODUCTION
+%----------------------------------------------------------------------------------------
+
+Một bức ảnh tưởng chừng đơn giản: một ma trận các pixel với các giá trị màu sắc. Tuy nhiên, đằng sau mỗi pixel đó là kết quả của một quá trình hình học tinh vi: ánh sáng từ một thế giới ba chiều được chiếu lên một mặt phẳng cảm biến hai chiều thông qua hệ quang học của camera.
+
+Quá trình này tạo ra một nghịch lý cơ bản trong thị giác máy tính. Thế giới mà chúng ta muốn hiểu là ba chiều, nhưng dữ liệu mà chúng ta quan sát được lại chỉ có hai chiều. Khi một cảnh 3D được chiếu xuống mặt phẳng ảnh, một phần thông tin không gian bị mất đi. Những vật thể ở xa có thể trông nhỏ hơn, các hình dạng có thể bị biến dạng theo góc nhìn, và nhiều cấu hình không gian khác nhau có thể tạo ra cùng một hình ảnh.
+
+Đối với con người, việc giải quyết nghịch lý này diễn ra một cách tự nhiên. Bộ não của chúng ta đã học được cách suy luận về cấu trúc không gian của thế giới từ các tín hiệu thị giác. Tuy nhiên, đối với máy tính, việc hiểu được mối quan hệ giữa thế giới 3D và ảnh 2D đòi hỏi một mô hình toán học rõ ràng và chính xác.
+
+Đây chính là lĩnh vực của \textbf{hình học camera (camera geometry)}. Thay vì chỉ xem hình ảnh như dữ liệu pixel, hình học camera mô tả chính xác cách một điểm trong thế giới ba chiều được chiếu lên một điểm trên mặt phẳng ảnh. Trọng tâm của mô hình này thường được biểu diễn bằng một phương trình gọn gàng nhưng cực kỳ mạnh mẽ:
+
+\[
+s\mathbf{p} = K [R|t] \mathbf{P}
+\]
+
+Phương trình này mô tả toàn bộ quá trình tạo ảnh. Một điểm trong thế giới $\mathbf{P}$ trước tiên được biến đổi vào hệ tọa độ của camera thông qua phép quay $R$ và phép tịnh tiến $t$. Sau đó, nó được chiếu lên mặt phẳng ảnh và được chuyển đổi thành tọa độ pixel thông qua ma trận nội tại $K$ của camera. 
+
+Mặc dù biểu thức này có vẻ đơn giản, nó chứa đựng toàn bộ hình học của quá trình tạo ảnh. Việc hiểu và khai thác mô hình này cho phép chúng ta giải quyết những bài toán cốt lõi của thị giác máy tính: xác định vị trí của camera trong không gian, tái dựng cấu trúc ba chiều của cảnh vật, hay suy luận mối quan hệ hình học giữa nhiều bức ảnh khác nhau.
+
+Những ý tưởng này không chỉ mang tính lý thuyết. Chúng là nền tảng cho nhiều hệ thống thị giác hiện đại, từ robot tự hành và công nghệ thực tế tăng cường đến các phương pháp tái dựng cảnh ba chiều từ nhiều góc nhìn.
+
+Trong chương này, chúng ta sẽ xây dựng từng bước mô hình hình học của camera, bắt đầu từ các nguyên lý cơ bản nhất cho đến các khái niệm nâng cao được sử dụng trong các hệ thống thị giác đa ảnh:
+
+\begin{itemize}
+	
+	\item \textbf{Pinhole Camera Model:} Chúng ta sẽ bắt đầu với mô hình camera lỗ kim, một mô hình hình học đơn giản nhưng cực kỳ mạnh mẽ mô tả cách ánh sáng từ thế giới 3D được chiếu lên mặt phẳng ảnh.
+	
+	\item \textbf{Coordinate Systems:} Tiếp theo, chúng ta sẽ giới thiệu các hệ tọa độ khác nhau trong thị giác máy tính, bao gồm tọa độ thế giới, tọa độ camera, tọa độ ảnh và tọa độ pixel.
+	
+	\item \textbf{Intrinsic Parameters ($K$):} Chúng ta sẽ phân tích các tham số nội tại của camera, vốn mô tả các đặc tính vật lý của hệ quang học như tiêu cự và tâm ảnh.
+	
+	\item \textbf{Extrinsic Parameters ($R, t$):} Phần này trình bày cách mô tả vị trí và hướng của camera trong không gian thông qua phép quay và phép tịnh tiến.
+	
+	\item \textbf{Camera Projection Matrix:} Chúng ta sẽ kết hợp các tham số nội tại và ngoại tại để xây dựng ma trận chiếu camera, mô hình toán học hoàn chỉnh cho quá trình chiếu từ 3D sang 2D.
+	
+	\item \textbf{Perspective Projection:} Chúng ta sẽ nghiên cứu chi tiết phép chiếu phối cảnh, cơ chế hình học tạo ra các hiệu ứng quen thuộc như vật thể ở xa trông nhỏ hơn.
+	
+	\item \textbf{Camera Calibration:} Trong thực tế, các tham số camera không phải lúc nào cũng được biết trước. Phần này trình bày các phương pháp ước lượng chúng từ dữ liệu ảnh.
+	
+	\item \textbf{Epipolar Geometry:} Khi nhiều camera quan sát cùng một cảnh, giữa các ảnh xuất hiện các ràng buộc hình học mạnh mẽ. Hình học epipolar mô tả chính xác mối quan hệ này.
+	
+	\item \textbf{Fundamental Matrix:} Chúng ta sẽ giới thiệu ma trận cơ bản, một công cụ toán học quan trọng để biểu diễn mối quan hệ hình học giữa hai ảnh của cùng một cảnh.
+	
+	\item \textbf{Triangulation:} Cuối cùng, chúng ta sẽ xem cách tái dựng vị trí ba chiều của một điểm trong không gian từ nhiều quan sát hai chiều khác nhau.
+	
+\end{itemize}
+
+Chương này đóng vai trò như chiếc cầu nối giữa thế giới vật lý và dữ liệu hình ảnh. Bằng cách hiểu được hình học của quá trình tạo ảnh, chúng ta không chỉ nhìn thấy các pixel trên màn hình, mà còn có thể suy luận về cấu trúc không gian của thế giới phía sau chúng.

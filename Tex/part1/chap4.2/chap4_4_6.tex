@@ -1,0 +1,244 @@
+\section{Phép chiếu Phối cảnh}
+\label{sec:perspective_projection}
+
+Trong mô hình camera lỗ kim, chúng ta đã giới thiệu công thức cơ bản của phép chiếu phối cảnh. Tuy nhiên, nếu chỉ dừng lại ở việc xem đây là một công thức hình học đơn thuần, chúng ta sẽ bỏ lỡ bản chất sâu hơn của quá trình tạo ảnh.
+
+Thực tế, phép chiếu phối cảnh không chỉ là một phép biến đổi từ 3D sang 2D, mà là một cơ chế \textbf{mã hóa thông tin không gian} vào ảnh theo một cách có cấu trúc nhưng không đầy đủ. Nó quyết định:
+\begin{itemize}
+	\item Thông tin nào được giữ lại
+	\item Thông tin nào bị mất đi
+	\item Và thông tin nào bị biến dạng
+\end{itemize}
+
+Để hiểu đầy đủ vai trò của phép biến đổi này trong thị giác máy tính, chúng ta cần xem xét nó từ góc nhìn của \textbf{hình học xạ ảnh (projective geometry)}.
+
+Việc hiểu sâu phép chiếu phối cảnh là chìa khóa để giải thích các hiện tượng như:
+\begin{itemize}
+	\item Biến dạng hình học trong ảnh
+	\item Điểm tụ (vanishing points)
+	\item Đường chân trời
+	\item Và đặc biệt là sự mất thông tin chiều sâu
+\end{itemize}
+\cite{Hartley2003, Faugeras1993, Forsyth2002}.
+
+\subsection{Phép chiếu như một Ánh xạ Phi tuyến}
+\label{subsec:perspective_nonlinear}
+
+Trong không gian Euclid, phép chiếu từ 3D sang 2D được mô tả bởi:
+
+\[
+x = \frac{X}{Z}, \quad y = \frac{Y}{Z}
+\]
+
+Thoạt nhìn, đây có vẻ là một công thức đơn giản. Tuy nhiên, điểm quan trọng nhất nằm ở phép chia cho $Z$.
+
+\begin{itemize}
+	\item Khi $Z$ thay đổi, $x, y$ thay đổi theo một cách không tuyến tính
+	\item Các điểm gần camera ($Z$ nhỏ) bị “phóng đại”
+	\item Các điểm xa camera ($Z$ lớn) bị “nén lại”
+\end{itemize}
+
+Do đó, đây là một phép biến đổi \textbf{phi tuyến}.
+
+\begin{mdframed}[style=infobox]
+	\textbf{Insight quan trọng}
+	
+	Tính phi tuyến không phải là một chi tiết kỹ thuật nhỏ, mà là bản chất của phép chiếu phối cảnh. Nó là nguyên nhân trực tiếp dẫn đến việc mất thông tin chiều sâu và gây ra các hiệu ứng phối cảnh trong ảnh.
+\end{mdframed}
+
+Một hệ quả cực kỳ quan trọng là:
+
+\begin{itemize}
+	\item Với một điểm ảnh $(x, y)$, không thể xác định duy nhất $Z$
+	\item Nhiều điểm 3D khác nhau có thể ánh xạ về cùng một pixel
+\end{itemize}
+
+Do đó:
+
+\begin{quote}
+	\textit{Phép chiếu phối cảnh là một ánh xạ nhiều-đến-một (many-to-one mapping).}
+\end{quote}
+
+Điều này dẫn đến một thực tế nền tảng của thị giác máy tính:
+
+\begin{itemize}
+	\item Không thể khôi phục duy nhất cấu trúc 3D từ một ảnh đơn
+	\item Bài toán tái dựng 3D là một bài toán \textbf{không xác định (ill-posed)}
+\end{itemize}
+
+\subsection{Biểu diễn Tuyến tính trong Không gian Xạ ảnh}
+\label{subsec:projective_representation}
+
+Mặc dù phi tuyến trong không gian Euclid, phép chiếu lại trở nên tuyến tính khi chuyển sang tọa độ thuần nhất:
+
+\[
+s
+\begin{bmatrix}
+	x \\
+	y \\
+	1
+\end{bmatrix}
+=
+\begin{bmatrix}
+	X \\
+	Y \\
+	Z
+\end{bmatrix}
+\]
+
+hoặc tổng quát hơn:
+
+\[
+s \mathbf{p} = P \mathbf{P}
+\]
+
+Ở đây, phép chia cho $Z$ được “ẩn” trong hệ số tỷ lệ $s$.
+
+\begin{mdframed}[style=infobox]
+	\textbf{Ý nghĩa cốt lõi}
+	
+	Tọa độ thuần nhất không chỉ là một mẹo toán học, mà là một cách thay đổi cách nhìn bài toán: thay vì làm việc với các điểm tuyệt đối, ta làm việc với các lớp tương đương theo tỷ lệ.
+\end{mdframed}
+
+Điều này mang lại một lợi ích cực lớn:
+
+\begin{itemize}
+	\item Biến một bài toán phi tuyến thành bài toán tuyến tính
+	\item Cho phép sử dụng đại số tuyến tính (SVD, least squares, v.v.)
+	\item Tạo nền tảng cho toàn bộ hình học đa ảnh
+\end{itemize}
+
+\subsection{Các Tia Chiếu và Không gian 1D}
+\label{subsec:projection_rays}
+
+Một cách hiểu sâu hơn về phép chiếu là thông qua khái niệm \textbf{tia chiếu (projection ray)}.
+
+Mỗi điểm ảnh $\mathbf{p}$ không tương ứng với một điểm duy nhất trong không gian, mà với một tia:
+
+\[
+\mathbf{X}(\lambda) = \lambda \mathbf{d}, \quad \lambda > 0
+\]
+
+Trong đó:
+\begin{itemize}
+	\item $\mathbf{d}$ là hướng của tia (được xác định bởi pixel)
+	\item $\lambda$ là tham số chiều sâu
+\end{itemize}
+
+\begin{mdframed}[style=infobox]
+	\textbf{Diễn giải Hình học}
+	
+	Một pixel thực chất đại diện cho một chiều (1D) trong không gian 3D. Điều này cho thấy rõ rằng phép chiếu làm giảm số chiều thông tin: từ 3D xuống 1D (tia), rồi mới xuống 2D (ảnh).
+\end{mdframed}
+
+Một cách diễn đạt mạnh hơn:
+
+\begin{quote}
+	\textit{Ảnh không chứa điểm 3D, mà chứa các tia 3D.}
+\end{quote}
+
+Đây là lý do tại sao:
+\begin{itemize}
+	\item Một ảnh không đủ để tái dựng 3D
+	\item Cần nhiều ảnh để giao các tia (triangulation)
+\end{itemize}
+
+\subsection{Điểm tụ (Vanishing Points)}
+\label{subsec:vanishing_points}
+
+Một hệ quả quan trọng của phép chiếu phối cảnh là sự xuất hiện của \textbf{điểm tụ}.
+
+Xét một họ các đường thẳng song song trong không gian:
+
+\[
+\mathbf{X}(t) = \mathbf{X}_0 + t \mathbf{d}
+\]
+
+Khi $t \rightarrow \infty$, ta đang xét các điểm “ở rất xa” theo hướng $\mathbf{d}$.
+
+Sau phép chiếu, các điểm này hội tụ về một điểm duy nhất trong ảnh:
+
+\[
+\mathbf{p}(t) \rightarrow \mathbf{p}_{\infty}
+\]
+
+\begin{mdframed}[style=infobox]
+	\textbf{Trực giác}
+	
+	Hiện tượng đường ray xe lửa hội tụ là một biểu hiện trực tiếp của hình học xạ ảnh: các hướng trong không gian được ánh xạ thành các điểm hữu hạn trên ảnh.
+\end{mdframed}
+
+Điểm tụ không phải là ảnh của một điểm hữu hạn, mà là ảnh của một \textbf{hướng} trong không gian.
+
+\subsection{Đường chân trời và Mặt phẳng tại Vô cực}
+\label{subsec:horizon_line}
+
+Nếu xét tất cả các hướng nằm trong một mặt phẳng (ví dụ mặt đất), các điểm tụ tương ứng sẽ tạo thành một đường thẳng gọi là \textbf{đường chân trời}.
+
+Trong hình học xạ ảnh:
+\begin{itemize}
+	\item Các hướng trong không gian được biểu diễn như các điểm tại vô cực
+	\item Tập hợp các điểm này tạo thành \textbf{mặt phẳng tại vô cực} $\pi_{\infty}$
+\end{itemize}
+
+Phép chiếu biến mặt phẳng này thành một đường thẳng trong ảnh.
+
+\begin{mdframed}[style=infobox]
+	\textbf{Insight sâu hơn}
+	
+	Đường chân trời không phụ thuộc vào vị trí của vật thể trong cảnh, mà chỉ phụ thuộc vào orientation của camera. Điều này làm cho nó trở thành một đặc trưng hình học ổn định.
+\end{mdframed}
+
+\subsection{Mất Bất biến Hình học}
+\label{subsec:loss_of_invariants}
+
+Phép chiếu phối cảnh phá vỡ hầu hết các cấu trúc hình học quen thuộc trong không gian Euclid:
+
+\begin{itemize}
+	\item Khoảng cách không còn ý nghĩa
+	\item Góc bị biến dạng
+	\item Các đường song song có thể giao nhau
+\end{itemize}
+
+Tuy nhiên, một số cấu trúc vẫn được bảo toàn:
+
+\begin{itemize}
+	\item Tính thẳng hàng (collinearity)
+	\item Tỷ số chéo (cross-ratio)
+\end{itemize}
+
+\begin{mdframed}[style=infobox]
+	\textbf{Cross-ratio}
+	
+	Cross-ratio là bất biến quan trọng nhất của hình học xạ ảnh. Nó cho phép suy luận các quan hệ hình học ngay cả khi khoảng cách và góc bị phá vỡ hoàn toàn.
+\end{mdframed}
+
+Điều này cho thấy một điểm quan trọng:
+
+\begin{quote}
+	\textit{Phép chiếu không phá hủy hoàn toàn cấu trúc hình học — nó chỉ giữ lại những gì “cần thiết” trong không gian xạ ảnh.}
+\end{quote}
+
+\subsection{Kết luận}
+\label{subsec:perspective_conclusion}
+
+Phép chiếu phối cảnh là cơ chế trung tâm của quá trình tạo ảnh, đồng thời là nguồn gốc của cả sức mạnh và thách thức trong thị giác máy tính.
+
+Nó:
+\begin{itemize}
+	\item Làm mất thông tin chiều sâu
+	\item Gây ra biến dạng hình học
+	\item Nhưng vẫn giữ lại các cấu trúc xạ ảnh quan trọng
+\end{itemize}
+
+Việc hiểu rõ phép biến đổi này không chỉ giúp giải thích các hiện tượng thị giác, mà còn cung cấp nền tảng để xây dựng các thuật toán suy luận hình học từ ảnh.
+
+Trong các phần tiếp theo, chúng ta sẽ khai thác các ràng buộc này khi có nhiều ảnh, từ đó từng bước khôi phục lại cấu trúc 3D của thế giới.
+
+\section*{Tài liệu tham khảo}
+\begin{itemize}
+	\item[1] Hartley, R., \& Zisserman, A. (2003). \textit{Multiple View Geometry in Computer Vision}. Cambridge University Press.
+	\item[2] Faugeras, O. (1993). \textit{Three-Dimensional Computer Vision}. MIT Press.
+	\item[3] Forsyth, D., \& Ponce, J. (2002). \textit{Computer Vision: A Modern Approach}. Prentice Hall.
+	\item[4] Ma, Y., Soatto, S., Kosecka, J., \& Sastry, S. (2004). \textit{An Invitation to 3-D Vision}. Springer.
+\end{itemize}

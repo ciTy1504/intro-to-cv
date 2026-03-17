@@ -1,0 +1,322 @@
+\section{Ma trận Fundamental}
+\label{sec:fundamental_matrix}
+
+Trong phần trước, chúng ta đã giới thiệu ràng buộc epipolar:
+
+\[
+\mathbf{x}'^T F \mathbf{x} = 0
+\]
+
+Tuy nhiên, biểu thức này mới chỉ được trình bày như một kết quả. Trong phần này, chúng ta sẽ xây dựng ma trận fundamental một cách hệ thống, bắt đầu từ hình học không gian, chuyển sang biểu diễn đại số, và cuối cùng là cách ước lượng trong thực tế.
+
+Quan trọng hơn, chúng ta sẽ làm rõ một điểm then chốt:
+
+\begin{center}
+	\textit{Ma trận $F$ thực sự biểu diễn cái gì — và cái gì nó \textbf{không} biểu diễn.}
+\end{center}
+
+\subsection{Động cơ: Ràng buộc Hình học giữa Hai Ảnh}
+\label{subsec:motivation_F}
+
+Xét hai camera với tâm $\mathbf{C}$ và $\mathbf{C}'$, và một điểm 3D $\mathbf{X}$.
+
+Ảnh của $\mathbf{X}$:
+\[
+\mathbf{x} = P\mathbf{X}, \quad \mathbf{x}' = P'\mathbf{X}
+\]
+
+Do cấu trúc chiếu phối cảnh:
+\begin{itemize}
+	\item $\mathbf{x}$ xác định một tia trong không gian
+	\item $\mathbf{x}'$ xác định một tia khác
+\end{itemize}
+
+Hai tia này giao nhau tại $\mathbf{X}$, do đó chúng cùng nằm trên một mặt phẳng — mặt phẳng epipolar.
+
+Hệ quả quan trọng:
+
+\begin{quote}
+	\textit{Điểm $\mathbf{x}'$ không thể nằm tùy ý trên ảnh, mà bị ràng buộc trên một đường epipolar xác định bởi $\mathbf{x}$.}
+\end{quote}
+
+Mục tiêu của chúng ta là biểu diễn ràng buộc hình học này bằng một phương trình đại số đơn giản.
+
+\subsection{Từ Điểm sang Đường: Góc nhìn Xạ ảnh}
+\label{subsec:point_to_line}
+
+Trong hình học xạ ảnh:
+
+\begin{itemize}
+	\item Một điểm $\mathbf{x}$ là vector $3 \times 1$
+	\item Một đường $\ell$ là vector $3 \times 1$
+	\item Quan hệ: $\mathbf{x}^T \ell = 0$
+\end{itemize}
+
+Do đó, nếu ta có một ánh xạ:
+
+\[
+\ell' = F \mathbf{x}
+\]
+
+thì:
+\[
+\mathbf{x}'^T \ell' = \mathbf{x}'^T F \mathbf{x} = 0
+\]
+
+\begin{mdframed}[style=infobox]
+	\textbf{Insight cực kỳ quan trọng}
+	
+	Ma trận fundamental không ánh xạ điểm sang điểm, mà ánh xạ điểm sang đường. Đây là bản chất hình học thật sự của nó.
+\end{mdframed}
+
+\subsection{Dẫn xuất từ Không gian 3D}
+\label{subsec:derivation_geometry}
+
+Xét hệ camera thứ hai:
+
+\[
+\mathbf{X}' = R\mathbf{X} + t
+\]
+
+Vì $\mathbf{x}$ là ảnh của $\mathbf{X}$, ta có:
+
+\[
+\mathbf{X} = \lambda K^{-1} \mathbf{x}
+\]
+
+Thay vào:
+
+\[
+\mathbf{X}' = R(\lambda K^{-1}\mathbf{x}) + t
+\]
+
+Xét mặt phẳng epipolar:
+
+\begin{itemize}
+	\item chứa vector $t$
+	\item chứa vector $\mathbf{X}'$
+\end{itemize}
+
+Pháp tuyến của mặt phẳng:
+
+\[
+\mathbf{n} = t \times \mathbf{X}'
+\]
+
+Điều kiện để $\mathbf{x}'$ nằm trên mặt phẳng:
+
+\[
+\mathbf{x}'^T \mathbf{n} = 0
+\]
+
+\subsection{Biểu diễn Tích có hướng}
+\label{subsec:skew_matrix}
+
+Ta sử dụng ma trận skew-symmetric:
+
+\[
+[t]_\times =
+\begin{bmatrix}
+	0 & -t_z & t_y \\
+	t_z & 0 & -t_x \\
+	-t_y & t_x & 0
+\end{bmatrix}
+\]
+
+sao cho:
+
+\[
+t \times \mathbf{X}' = [t]_\times \mathbf{X}'
+\]
+
+Do đó:
+
+\[
+\mathbf{x}'^T [t]_\times \mathbf{X}' = 0
+\]
+
+\subsection{Liên hệ với Tọa độ Ảnh}
+\label{subsec:image_relation}
+
+Ta có:
+
+\[
+\mathbf{X}' = R K^{-1} \mathbf{x} + t
+\]
+
+Thay vào:
+
+\[
+\mathbf{x}'^T [t]_\times R K^{-1} \mathbf{x} = 0
+\]
+
+Đưa về dạng chuẩn:
+
+\[
+F = K'^{-T} [t]_\times R K^{-1}
+\]
+
+và:
+
+\[
+\mathbf{x}'^T F \mathbf{x} = 0
+\]
+
+\begin{mdframed}[style=infobox]
+	\textbf{Insight}
+	
+	Toàn bộ hình học epipolar được nén lại thành một ma trận $3\times3$. Đây là một dạng "nén thông tin hình học" cực kỳ mạnh.
+\end{mdframed}
+
+\subsection{Cấu trúc Đại số của $F$}
+\label{subsec:F_structure}
+
+\paragraph{Hạng (Rank)}
+
+\[
+\text{rank}(F) = 2
+\]
+
+Lý do:
+\begin{itemize}
+	\item $[t]_\times$ có hạng 2
+	\item các phép nhân với $K, R$ không làm tăng hạng
+\end{itemize}
+
+\paragraph{Null space và Epipole}
+
+\[
+F \mathbf{e} = 0, \quad F^T \mathbf{e}' = 0
+\]
+
+Điều này có nghĩa:
+
+\begin{itemize}
+	\item $\mathbf{e}$ nằm trong null space của $F$
+	\item $\mathbf{e}'$ nằm trong null space của $F^T$
+\end{itemize}
+
+\begin{mdframed}[style=infobox]
+	\textbf{Diễn giải sâu}
+	
+	Epipole là điểm duy nhất mà không ánh xạ thành một đường, mà ánh xạ thành vector 0. Điều này phản ánh việc mọi đường epipolar đều đi qua epipole.
+\end{mdframed}
+
+\paragraph{Bậc tự do}
+
+\begin{itemize}
+	\item 9 phần tử
+	\item trừ scale: -1
+	\item trừ rank constraint: -1
+\end{itemize}
+
+\[
+\Rightarrow 7 \text{ DoF}
+\]
+
+\subsection{Ý nghĩa Hình học của $F$}
+\label{subsec:F_geometry_meaning}
+
+Một hiểu lầm phổ biến:
+
+\begin{quote}
+	\textit{$F$ chứa thông tin về cấu trúc 3D}
+\end{quote}
+
+Điều này \textbf{sai}.
+
+\begin{mdframed}[style=infobox]
+	\textbf{Insight cực quan trọng}
+	
+	$F$ không chứa thông tin 3D. Nó chỉ chứa mối quan hệ giữa hai phép chiếu. Nhiều cấu hình 3D khác nhau có thể tạo ra cùng một $F$.
+\end{mdframed}
+
+\subsection{Ước lượng Ma trận Fundamental}
+\label{subsec:F_estimation}
+
+\paragraph{Eight-point algorithm}
+
+Từ:
+
+\[
+\mathbf{x}'^T F \mathbf{x} = 0
+\]
+
+ta có dạng tuyến tính:
+
+\[
+A \mathbf{f} = 0
+\]
+
+\begin{itemize}
+	\item cần $\geq 8$ điểm
+	\item giải bằng SVD
+\end{itemize}
+
+\paragraph{Normalization (rất quan trọng)}
+
+Quy trình:
+\begin{itemize}
+	\item dịch điểm về trung tâm
+	\item scale sao cho khoảng cách trung bình = $\sqrt{2}$
+\end{itemize}
+
+Nếu bỏ qua:
+\begin{itemize}
+	\item nghiệm cực kỳ không ổn định
+\end{itemize}
+
+\paragraph{Áp đặt Rank-2}
+
+Sau SVD:
+
+\begin{itemize}
+	\item đặt singular value nhỏ nhất = 0
+\end{itemize}
+
+\subsection{Các Trường hợp Suy biến}
+\label{subsec:degenerate_cases}
+
+\begin{itemize}
+	\item Tất cả điểm nằm trên mặt phẳng
+	\item Chuyển động thuần quay
+	\item Baseline rất nhỏ
+\end{itemize}
+
+Trong các trường hợp này:
+\begin{itemize}
+	\item $F$ không xác định tốt
+	\item matching sai
+\end{itemize}
+
+\subsection{Liên hệ với Essential Matrix}
+\label{subsec:essential_relation}
+
+\[
+E = [t]_\times R
+\]
+
+\[
+F = K'^{-T} E K^{-1}
+\]
+
+\begin{mdframed}[style=infobox]
+	\textbf{Insight}
+	
+	$E$ sống trong không gian camera (metric), còn $F$ sống trong không gian ảnh (pixel).
+\end{mdframed}
+
+\subsection{Kết luận}
+\label{subsec:F_conclusion}
+
+Ma trận fundamental là một trong những công cụ trung tâm của thị giác máy tính. Nó cho phép biểu diễn một ràng buộc hình học phức tạp trong không gian 3D dưới dạng một phương trình song tuyến tính đơn giản.
+
+Quan trọng hơn, nó cung cấp:
+
+\begin{itemize}
+	\item Giảm bài toán matching từ 2D xuống 1D
+	\item Cơ sở để ước lượng chuyển động camera
+	\item Nền tảng cho triangulation và SfM
+\end{itemize}
+
+Hiểu sâu $F$ không chỉ là hiểu một công thức, mà là hiểu cấu trúc hình học của nhiều góc nhìn.

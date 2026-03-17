@@ -1,0 +1,296 @@
+\section{Hiệu chỉnh Camera}
+\label{sec:camera_calibration}
+
+Trong các phần trước, chúng ta đã xây dựng một mô hình toán học hoàn chỉnh của camera dưới dạng:
+
+\[
+P = K[R|t]
+\]
+
+Mô hình này cung cấp một mô tả chính xác về cách một điểm trong không gian 3D được ánh xạ lên ảnh 2D. Tuy nhiên, toàn bộ mô hình này mới chỉ tồn tại ở mức lý thuyết. Trong thực tế, khi làm việc với một camera vật lý, chúng ta không được cung cấp trực tiếp các tham số $K$, $R$, hay $t$.
+
+Các thông số như tiêu cự, tâm ảnh, hay độ lệch pixel:
+\begin{itemize}
+	\item Không được đo trực tiếp
+	\item Có sai số do sản xuất
+	\item Có thể thay đổi theo thời gian (zoom, nhiệt độ, v.v.)
+\end{itemize}
+
+Do đó, để áp dụng các mô hình hình học vào thực tế, chúng ta cần một bước trung gian: \textbf{ước lượng các tham số camera từ dữ liệu quan sát}.
+
+Điều này dẫn đến bài toán trung tâm:
+
+\begin{center}
+	\textit{Làm thế nào để suy ra các tham số của camera chỉ từ các ảnh mà nó chụp?}
+\end{center}
+
+Bài toán này được gọi là \textbf{hiệu chỉnh camera (camera calibration)}. Đây là một trong những bước quan trọng nhất trong toàn bộ pipeline của thị giác máy tính, vì mọi sai số ở bước này sẽ lan truyền sang tất cả các bước phía sau.
+
+\subsection{Phát biểu Bài toán}
+\label{subsec:calibration_problem}
+
+Giả sử ta có:
+\begin{itemize}
+	\item Một tập các điểm 3D $\mathbf{X}_i$ trong hệ tọa độ thế giới (đã biết chính xác)
+	\item Các điểm ảnh tương ứng $\mathbf{x}_i$ được quan sát trên ảnh
+\end{itemize}
+
+Mục tiêu là tìm ma trận chiếu $P$ sao cho:
+
+\[
+\mathbf{x}_i \sim P \mathbf{X}_i
+\]
+
+với $\sim$ biểu thị bằng nhau đến một hệ số tỷ lệ.
+
+Về bản chất, đây là một bài toán \textbf{ước lượng tham số từ dữ liệu} (parameter estimation). Ta có:
+\begin{itemize}
+	\item Dữ liệu đầu vào: các cặp tương ứng $(\mathbf{X}_i, \mathbf{x}_i)$
+	\item Mô hình: phép chiếu tuyến tính trong không gian thuần nhất
+	\item Mục tiêu: tìm tham số $P$ tốt nhất giải thích dữ liệu
+\end{itemize}
+
+\begin{mdframed}[style=infobox]
+	\textbf{Diễn giải}
+	
+	Hiệu chỉnh camera là một bài toán khớp mô hình: ta tìm các tham số sao cho mô hình chiếu dự đoán ra các điểm ảnh gần nhất với quan sát thực tế.
+\end{mdframed}
+
+Một điểm quan trọng là dữ liệu luôn chứa nhiễu:
+\begin{itemize}
+	\item Sai số đo điểm ảnh
+	\item Sai số vị trí điểm 3D
+	\item Biến dạng ống kính
+\end{itemize}
+
+Do đó, bài toán này luôn phải được giải theo nghĩa \textbf{xấp xỉ tối ưu}, không phải nghiệm chính xác.
+
+\subsection{Hiệu chỉnh Nội tại và Ngoại tại}
+\label{subsec:intrinsic_extrinsic_calibration}
+
+Bài toán calibration có thể được tách thành hai phần:
+
+\begin{itemize}
+	\item \textbf{Hiệu chỉnh nội tại}: ước lượng $K$
+	\item \textbf{Hiệu chỉnh ngoại tại}: ước lượng $R, t$
+\end{itemize}
+
+Sự tách biệt này có ý nghĩa rất quan trọng trong thực tế.
+
+\paragraph{Ý nghĩa trực quan}
+
+\begin{itemize}
+	\item $K$ là thuộc tính \textbf{cố định của camera}
+	\item $R, t$ thay đổi theo \textbf{vị trí và hướng chụp}
+\end{itemize}
+
+Điều này cho phép:
+\begin{itemize}
+	\item Hiệu chỉnh nội tại một lần
+	\item Sau đó chỉ cần ước lượng $R, t$ cho từng ảnh
+\end{itemize}
+
+\begin{mdframed}[style=infobox]
+	\textbf{Insight quan trọng}
+	
+	Việc tách $K$ và $(R,t)$ giúp giảm đáng kể độ phức tạp của bài toán, đồng thời phản ánh đúng cấu trúc vật lý của hệ thống camera.
+\end{mdframed}
+
+\subsection{Phương pháp Tuyến tính (DLT)}
+\label{subsec:dlt}
+
+Một cách tiếp cận cơ bản là sử dụng thuật toán \textbf{Direct Linear Transformation (DLT)}.
+
+Từ:
+\[
+\mathbf{x} \sim P \mathbf{X}
+\]
+
+ta có thể viết lại thành các phương trình tuyến tính theo các phần tử của $P$.
+
+Mỗi cặp tương ứng cung cấp hai phương trình độc lập, và khi có đủ điểm, ta thu được hệ:
+
+\[
+A \mathbf{p} = 0
+\]
+
+\begin{itemize}
+	\item $\mathbf{p}$: vector 12 chiều (các phần tử của $P$)
+	\item $A$: ma trận dữ liệu
+\end{itemize}
+
+\begin{mdframed}[style=infobox]
+	\textbf{Insight}
+	
+	DLT biến một bài toán hình học thành một bài toán đại số tuyến tính. Đây là một ví dụ điển hình của việc “đại số hóa” hình học trong thị giác máy tính.
+\end{mdframed}
+
+Nghiệm được tìm bằng:
+
+\[
+\min_{\|\mathbf{p}\|=1} \|A\mathbf{p}\|
+\]
+
+sử dụng SVD.
+
+\paragraph{Vấn đề chuẩn hóa (Normalization)}
+
+Trong thực tế, trước khi áp dụng DLT, cần chuẩn hóa dữ liệu:
+\begin{itemize}
+	\item Dịch tâm dữ liệu về gốc
+	\item Scale sao cho giá trị trung bình là $\sqrt{2}$ hoặc $\sqrt{3}$
+\end{itemize}
+
+Nếu không:
+\begin{itemize}
+	\item Ma trận $A$ có thể bị ill-conditioned
+	\item Kết quả không ổn định
+\end{itemize}
+
+\subsection{Hạn chế của DLT}
+\label{subsec:dlt_limitations}
+
+DLT có nhiều hạn chế:
+
+\begin{itemize}
+	\item Nhạy với nhiễu
+	\item Không đảm bảo $R \in SO(3)$
+	\item Không tối ưu theo reprojection error
+\end{itemize}
+
+Quan trọng hơn:
+
+\begin{quote}
+	\textit{DLT tối ưu sai số đại số, không phải sai số hình học.}
+\end{quote}
+
+Điều này có nghĩa là nghiệm có thể tốt về mặt toán học nhưng không tốt về mặt hình học.
+
+\subsection{Hiệu chỉnh với Mẫu Phẳng (Zhang's Method)}
+\label{subsec:zhang_method}
+
+Trong thực tế, việc sử dụng các điểm 3D chính xác là khó khăn. Zhang's method giải quyết vấn đề này bằng cách sử dụng một mẫu phẳng.
+
+Ý tưởng chính:
+\begin{itemize}
+	\item Sử dụng một mặt phẳng (checkerboard)
+	\item Chụp nhiều ảnh ở các góc khác nhau
+\end{itemize}
+
+Với mỗi ảnh:
+
+\[
+\mathbf{x} \sim H \mathbf{X}
+\]
+
+Trong đó $H$ là homography.
+
+Điểm mấu chốt là:
+
+\begin{quote}
+	\textit{Homography chứa thông tin về cả $K$ và $R,t$.}
+\end{quote}
+
+Từ nhiều homography, ta thu được các ràng buộc tuyến tính trên $K$.
+
+\begin{mdframed}[style=infobox]
+	\textbf{Insight quan trọng}
+	
+	Zhang's method biến bài toán 3D thành nhiều bài toán 2D, sau đó “ghép” các nghiệm lại để suy ra tham số camera.
+\end{mdframed}
+
+\paragraph{Tại sao cần nhiều ảnh?}
+
+Một homography chỉ cung cấp một số ràng buộc. Cần nhiều ảnh để:
+\begin{itemize}
+	\item Đủ điều kiện xác định $K$
+	\item Tăng độ ổn định
+\end{itemize}
+
+\subsection{Tối ưu Phi tuyến (Bundle Adjustment)}
+\label{subsec:bundle_adjustment}
+
+Sau khi có ước lượng ban đầu, ta tinh chỉnh bằng cách tối thiểu hóa sai số chiếu:
+
+\[
+\min \sum_i \|\mathbf{x}_i - \hat{\mathbf{x}}_i\|^2
+\]
+
+Đây là một bài toán tối ưu phi tuyến.
+
+\begin{itemize}
+	\item Biến số: $K, R, t$
+	\item Hàm mục tiêu: reprojection error
+\end{itemize}
+
+\begin{mdframed}[style=infobox]
+	\textbf{Insight}
+	
+	Reprojection error là tiêu chuẩn tự nhiên nhất: nó đo trực tiếp sự khác biệt giữa mô hình và quan sát.
+\end{mdframed}
+
+Thuật toán thường dùng:
+\begin{itemize}
+	\item Gauss-Newton
+	\item Levenberg-Marquardt
+\end{itemize}
+
+\paragraph{Vấn đề hội tụ}
+
+\begin{itemize}
+	\item Phụ thuộc mạnh vào khởi tạo
+	\item Có thể rơi vào local minima
+\end{itemize}
+
+Do đó DLT đóng vai trò cực kỳ quan trọng.
+
+\subsection{Biến dạng Ống kính}
+\label{subsec:distortion}
+
+Camera thực tế không tuân theo mô hình pinhole.
+
+Một mô hình phổ biến:
+
+\[
+x_{distorted} = x (1 + k_1 r^2 + k_2 r^4 + \dots)
+\]
+
+\begin{itemize}
+	\item $r$ là khoảng cách đến tâm ảnh
+	\item $k_i$ là hệ số distortion
+\end{itemize}
+
+\begin{mdframed}[style=infobox]
+	\textbf{Trực giác}
+	
+	Các tia sáng không hội tụ hoàn hảo, dẫn đến việc các đường thẳng bị cong trong ảnh.
+\end{mdframed}
+
+Nếu không xử lý distortion:
+\begin{itemize}
+	\item Sai số hình học tăng mạnh
+	\item Reconstruction bị lệch
+\end{itemize}
+
+\subsection{Kết luận}
+\label{subsec:calibration_conclusion}
+
+Hiệu chỉnh camera là bước chuyển từ lý thuyết sang thực tế.
+
+Nó bao gồm:
+\begin{itemize}
+	\item Ước lượng tuyến tính (DLT)
+	\item Khai thác cấu trúc (Zhang)
+	\item Tối ưu phi tuyến (Bundle Adjustment)
+	\item Mô hình hóa sai lệch (distortion)
+\end{itemize}
+
+Hiểu rõ toàn bộ pipeline này là điều kiện cần để xây dựng các hệ thống thị giác chính xác và đáng tin cậy.
+
+\section*{Tài liệu tham khảo}
+\begin{itemize}
+	\item[1] Hartley, R., \& Zisserman, A. (2003). \textit{Multiple View Geometry in Computer Vision}. Cambridge University Press.
+	\item[2] Zhang, Z. (2000). A flexible new technique for camera calibration. IEEE TPAMI.
+	\item[3] Forsyth, D., \& Ponce, J. (2002). \textit{Computer Vision: A Modern Approach}. Prentice Hall.
+	\item[4] Ma, Y. et al. (2004). \textit{An Invitation to 3-D Vision}. Springer.
+\end{itemize}
