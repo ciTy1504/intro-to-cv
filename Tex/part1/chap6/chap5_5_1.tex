@@ -1,0 +1,2062 @@
+\section{Phát hiện Vật thể (Object Detection)}
+\label{sec:object_detection}
+
+Nếu phân loại ảnh là bước đầu tiên để một cỗ máy "nhận biết" thế giới, thì phát hiện vật thể là bước nhảy vọt thực sự hướng tới sự "thấu hiểu". Bài toán không còn dừng lại ở việc gán một nhãn chung cho toàn bộ bức ảnh, mà đòi hỏi mô hình phải trả lời hai câu hỏi cùng một lúc: \textbf{"Có những vật thể gì trong ảnh?" (Phân loại)} và \textbf{"Chúng đang ở đâu?" (Định vị)}.
+
+Đầu ra của một mô hình phát hiện vật thể không phải là một nhãn duy nhất, mà là một danh sách các đối tượng được tìm thấy. Mỗi đối tượng được biểu diễn bởi:
+\begin{itemize}
+	\item Một \textbf{khung hộp bao (bounding box)}, thường được định nghĩa bởi tọa độ của góc trên bên trái và góc dưới bên phải $(x_{min}, y_{min}, x_{max}, y_{max})$.
+	\item Một \textbf{nhãn lớp (class label)} cho đối tượng bên trong hộp (ví dụ: "chó", "mèo", "ô tô").
+	\item Một \textbf{điểm số tự tin (confidence score)}, cho biết mức độ chắc chắn của mô hình về dự đoán của nó.
+\end{itemize}
+
+Lịch sử phát triển của các thuật toán phát hiện vật thể trong kỷ nguyên học sâu là một cuộc chạy đua hấp dẫn giữa hai trường phái chính:
+\begin{enumerate}
+	\item \textbf{Các bộ phát hiện hai giai đoạn (Two-stage detectors):} Hoạt động theo nguyên lý "nhìn kỹ". Giai đoạn đầu tiên đề xuất một tập hợp các vùng có khả năng chứa vật thể (region proposals), và giai đoạn thứ hai phân loại và tinh chỉnh các vùng đó. Chúng thường có độ chính xác cao hơn.
+	\item \textbf{Các bộ phát hiện một giai đoạn (One-stage detectors):} Hoạt động theo nguyên lý "nhìn một lần". Chúng dự đoán trực tiếp vị trí và lớp của các vật thể từ ảnh đầu vào chỉ trong một lượt duy nhất, không có bước đề xuất vùng riêng biệt. Chúng thường nhanh hơn rất nhiều.
+\end{enumerate}
+Trong phần này, chúng ta sẽ lần theo dấu chân của cả hai trường phái này, từ những ý tưởng sơ khai đến các kiến trúc state-of-the-art ngày nay.
+
+\subsection{Kỷ nguyên CNN: Từ R-CNN đến YOLO và SSD}
+\label{subsec:cnn_based_detectors}
+
+Sự thành công của AlexNet trong phân loại ảnh năm 2012 đã mở ra một câu hỏi cấp thiết: làm thế nào để áp dụng sức mạnh trích xuất đặc trưng của CNN cho bài toán phát hiện vật thể phức tạp hơn?
+
+\subsubsection{Họ R-CNN: Cách tiếp cận Hai giai đoạn}
+\label{subsubsec:r_cnn_family}
+
+\paragraph{R-CNN (2014):}
+\textbf{Regions with CNN features (R-CNN)} \cite{Girshick2014} là mô hình tiên phong đưa CNN vào bài toán phát hiện vật thể, đánh dấu sự chuyển dịch từ đặc trưng thủ công (HOG, DPM) sang đặc trưng học sâu.
+
+\textbf{Ý tưởng cốt lõi:} Tách bài toán phát hiện thành hai bước:
+(1) sinh các vùng có khả năng chứa vật thể,
+(2) phân loại và tinh chỉnh từng vùng bằng CNN.
+
+---
+
+\textbf{Pipeline 3 giai đoạn rời rạc:}
+
+\begin{enumerate}
+	\item \textbf{Sinh vùng đề xuất (Region Proposal Generation):}
+	
+	Sử dụng \textbf{Selective Search} để sinh ra tập các vùng $\{R_i\}_{i=1}^N$, với $N \approx 2000$.
+	
+	\textbf{Phân tích:}
+	\begin{itemize}
+		\item Selective Search dựa trên phân đoạn ảnh và heuristic (color, texture, size) → không học được.
+		\item Đảm bảo recall cao: xác suất bỏ sót object thấp, nhưng tạo nhiều vùng dư thừa.
+		\item Dẫn đến độ phức tạp cao ở các bước sau:
+		\[
+		O(N) \text{ forward passes qua CNN}
+		\]
+	\end{itemize}
+	
+	---
+	
+	\item \textbf{Trích xuất đặc trưng CNN (CNN Feature Extraction):} 
+	
+	Mỗi vùng $R_i$ được warp về kích thước cố định $H \times W$ và đưa qua CNN:
+	\[
+	\mathbf{f}_i = \phi(R_i) = \text{CNN}(R_i) \in \mathbb{R}^{d}, \quad d = 4096
+	\]
+	
+	\textbf{Phân tích biểu diễn:}
+	\begin{itemize}
+		\item CNN học một ánh xạ phi tuyến:
+		\[
+		\phi: \mathbb{R}^{H \times W \times 3} \rightarrow \mathbb{R}^d
+		\]
+		\item Không gian đặc trưng $\mathbb{R}^d$ có tính chất:
+		\[
+		\exists \ \mathbf{w}_c \ \text{s.t.} \ \mathbf{w}_c^\top \mathbf{f}_i \gg \mathbf{w}_{c'}^\top \mathbf{f}_i
+		\]
+		→ các lớp trở nên gần tuyến tính phân tách.
+		
+		\item Tuy nhiên, phép \textbf{warping} gây méo hình học:
+		\begin{itemize}
+			\item Mất tỷ lệ khung hình ban đầu
+			\item Làm suy giảm thông tin không gian → ảnh hưởng localization
+		\end{itemize}
+	\end{itemize}
+	
+	---
+	
+	\item \textbf{Phân loại và Hồi quy bounding box:} 
+	
+	\begin{itemize}
+		\item \textbf{Phân loại:} 
+		
+		Mỗi vector $\mathbf{f}_i$ được đưa vào các SVM tuyến tính:
+		\[
+		s_c = \mathbf{w}_c^\top \mathbf{f}_i + b_c
+		\]
+		
+		\textbf{Phân tích:}
+		\begin{itemize}
+			\item Đây là một bộ phân loại tuyến tính trên embedding CNN.
+			\item Việc tách CNN và SVM làm mất khả năng học joint representation.
+		\end{itemize}
+		
+		---
+		
+		\item \textbf{Hồi quy bounding box:} 
+		
+		Mô hình học các offset tương đối:
+		\[
+		t_x = \frac{x - x_a}{w_a}, \quad
+		t_y = \frac{y - y_a}{h_a}, \quad
+		t_w = \log \frac{w}{w_a}, \quad
+		t_h = \log \frac{h}{h_a}
+		\]
+		
+		\textbf{Phân tích tham số hóa:}
+		\begin{itemize}
+			\item Chuẩn hóa theo $(w_a, h_a)$ giúp giảm variance giữa các box.
+			\item Hàm log chuyển bài toán scale:
+			\[
+			w = w_a e^{t_w}
+			\]
+			→ từ multiplicative sang additive → dễ học hơn.
+		\end{itemize}
+		
+		\textbf{Hàm mất mát:}
+		\[
+		L_{\text{bbox}} = \sum_{i} \mathbf{1}_{\{c_i \ge 1\}} \sum_{j \in \{x,y,w,h\}} (t_{ij} - t^*_{ij})^2
+		\]
+		
+		\textbf{Phân tích gradient:}
+		\begin{itemize}
+			\item Loss chỉ áp dụng cho positive samples → tránh nhiễu từ background.
+			\item Với tham số log-scale:
+			\[
+			\frac{\partial L}{\partial t_w} \propto \frac{\partial L}{\partial w} \cdot w
+			\]
+			→ gradient tỷ lệ với kích thước box → cân bằng giữa object nhỏ và lớn.
+		\end{itemize}
+		
+		---
+		
+		\item \textbf{Loss tổng thể:}
+		\[
+		\mathcal{L}_{\text{R-CNN}} = \sum_i L_{\text{cls}} + \lambda \sum_i L_{\text{bbox}}
+		\]
+		
+		\textbf{Lưu ý:} các thành phần loss không được tối ưu đồng thời trong một mạng thống nhất.
+		
+	\end{itemize}
+
+	
+\end{enumerate}
+\begin{center} 
+	\includegraphics[width=1.0\textwidth]
+	{images/rcnn_pipeline_diagram.png} 
+	\captionof{figure}{Pipeline 3 giai đoạn của R-CNN. CNN chạy trên từng vùng đề xuất, SVM phân loại, bộ hồi quy điều chỉnh bounding box.} 
+	\label{fig:rcnn_pipeline} 
+\end{center}
+---
+
+\textbf{Huấn luyện: Pipeline rời rạc}
+
+R-CNN không được huấn luyện end-to-end mà gồm nhiều bước:
+
+\begin{itemize}
+	\item Fine-tune CNN trên các region proposals → học feature $\phi$.
+	\item Train SVM trên $\mathbf{f}_i$ → học classifier.
+	\item Train regressor riêng → học localization.
+\end{itemize}
+
+\textbf{Hệ quả:}
+\begin{itemize}
+	\item Gradient không thể lan truyền từ detection về feature extractor.
+	\item Representation không tối ưu cho toàn bộ pipeline.
+\end{itemize}
+
+---
+
+\textbf{Phân tích độ phức tạp:}
+
+\[
+\text{Cost} \approx N \cdot \text{CNN}(R_i)
+\]
+
+Với $N \approx 2000$:
+\begin{itemize}
+	\item Thời gian inference $\sim 47s$/ảnh
+	\item Redundant computation do các vùng chồng lấp lớn
+\end{itemize}
+
+---
+
+\textbf{Hạn chế:}
+\begin{itemize}
+	\item \textbf{Tính toán dư thừa:} cùng một vùng ảnh được xử lý nhiều lần.
+	\item \textbf{Không end-to-end:} pipeline bị tách rời → không tối ưu joint.
+	\item \textbf{Warping distortion:} làm mất thông tin hình học.
+	\item \textbf{Memory footprint lớn:} lưu feature cho hàng nghìn RoI.
+\end{itemize}
+
+---
+
+
+R-CNN chứng minh rằng:
+\begin{itemize}
+	\item CNN có thể học representation mạnh cho detection.
+	\item Tuy nhiên, bottleneck chính nằm ở \textbf{việc lặp lại computation theo từng region}.
+\end{itemize}
+
+Đây chính là động lực dẫn đến Fast R-CNN: \textit{chia sẻ feature thay vì tính lại từ đầu}.
+
+\paragraph{Fast R-CNN (2015):}
+Để giải quyết "nút thắt cổ chai" về tính toán dư thừa của R-CNN, Ross Girshick đề xuất \textbf{Fast R-CNN} \cite{Girshick2015}, với ý tưởng cốt lõi là \textbf{chia sẻ computation trên toàn ảnh} thay vì xử lý từng vùng riêng lẻ.
+
+---
+
+\textbf{Cải tiến cốt lõi: Feature Sharing}
+
+Thay vì áp dụng CNN trên từng vùng đề xuất $R_i$, Fast R-CNN chỉ chạy CNN một lần trên toàn bộ ảnh:
+\[
+F = \phi(I) = \text{CNN}(I) \in \mathbb{R}^{C \times H' \times W'}
+\]
+
+Các vùng đề xuất ${R_i}$ sau đó được ánh xạ (project) lên feature map $F$.
+
+\textbf{Phân tích:}
+\begin{itemize}
+	\item Trong R-CNN: cùng một pixel có thể được xử lý $\sim 2000$ lần.
+	\item Trong Fast R-CNN: mỗi pixel chỉ đi qua CNN đúng một lần.
+\end{itemize}
+
+\[
+\text{Cost}*{\text{R-CNN}} = O(N \cdot \text{CNN}), \quad
+\text{Cost}*{\text{Fast}} = O(\text{CNN}) + O(N)
+\]
+
+→ Giảm bậc độ phức tạp theo hệ số $\sim N$.
+
+---
+
+\textbf{RoI Projection:}
+
+Một RoI trên ảnh gốc $R_i = (x_1, y_1, x_2, y_2)$ được chiếu lên feature map:
+\[
+R_i' = \left(\frac{x_1}{s}, \frac{y_1}{s}, \frac{x_2}{s}, \frac{y_2}{s}\right)
+\]
+
+trong đó $s$ là stride của CNN.
+
+\textbf{Lưu ý:}
+\begin{itemize}
+	\item Đây là phép biến đổi affine.
+	\item Tọa độ thường bị làm tròn → gây sai lệch không gian (quantization).
+\end{itemize}
+
+---
+
+\textbf{RoI Pooling: Chuẩn hóa kích thước đặc trưng}
+
+Để xử lý các RoI có kích thước khác nhau, Fast R-CNN sử dụng RoI Pooling để ánh xạ mỗi vùng về kích thước cố định.
+
+\begin{enumerate}
+	\item Chia $R_i'$ thành lưới $H_f \times W_f$ bins.
+	
+
+	\item Với mỗi bin $(u,v)$:
+	\[
+	f_i^{(u,v)} = \max_{(x,y) \in \text{bin}(u,v)} F(x,y)
+	\]
+	
+	\item Flatten thành vector:
+	\[
+	\mathbf{f}_i = \text{Flatten}(f_i) \in \mathbb{R}^d
+	\]
+
+	
+\end{enumerate}
+
+---
+
+\textbf{Phân tích toán học của RoI Pooling:}
+
+\begin{itemize}
+	\item RoI Pooling là một phép ánh xạ:
+	\[
+	\mathcal{P}: \mathbb{R}^{C \times H' \times W'} \rightarrow \mathbb{R}^{C \times H_f \times W_f}
+	\]
+	
+
+	\item Mỗi output phụ thuộc vào một tập con của feature map:
+	\[
+	f_i^{(u,v)} = \max_{(x,y) \in \Omega_{uv}} F(x,y)
+	\]
+
+	
+\end{itemize}
+
+---
+
+\textbf{Gradient flow qua RoI Pooling:}
+
+Do sử dụng max-pooling, gradient có dạng:
+
+\[
+\frac{\partial L}{\partial F(x,y)} =
+\begin{cases}
+	\frac{\partial L}{\partial f_i^{(u,v)}} & \text{nếu } (x,y) = \arg\max \
+	0 \& \text{ngược lại}
+\end{cases}
+\]
+
+\textbf{Hệ quả:}
+\begin{itemize}
+	\item Gradient rất sparse (chỉ đi qua vị trí max).
+	\item Có thể gây mất thông tin gradient.
+\end{itemize}
+
+---
+
+\textbf{Vấn đề lượng tử hóa (Quantization Error):}
+
+\begin{itemize}
+	\item Tọa độ RoI bị làm tròn khi chia bins.
+	\item Các pixel biên có thể bị bỏ qua hoặc gán sai bin.
+\end{itemize}
+
+\[
+\Delta x \approx \frac{1}{s}
+\]
+
+→ Sai số này đặc biệt ảnh hưởng tới localization chính xác, và là động lực cho RoIAlign sau này.
+
+---
+
+\textbf{Head Network:}
+
+Feature $\mathbf{f}_i$ được đưa qua các fully-connected layers:
+\[
+\mathbf{h}_i = \sigma(W \mathbf{f}_i + b)
+\]
+
+Sau đó tách thành hai nhánh:
+\begin{itemize}
+	\item Classification: $p_i = \text{softmax}(W_c \mathbf{h}_i)$
+	\item Regression: $t_i = W_r \mathbf{h}_i$
+\end{itemize}
+
+---
+
+\textbf{Loss Function: Multi-task Learning}
+
+\[
+\mathcal{L} = L_{\text{cls}}(p_i, c_i^*) + \lambda \mathbf{1}_{{c_i^* \ge 1}} L_{\text{reg}}(t_i, t_i^*)
+\]
+
+\textbf{Phân tích:}
+
+\begin{itemize}
+	\item Classification:
+	\[
+	L_{\text{cls}} = -\log p_i[c_i^*]
+	\]
+	
+
+	\item Regression (Smooth L1):
+	\[
+	\text{SmoothL1}(x) =
+	\begin{cases}
+		0.5x^2 & |x| < 1 \\
+		|x| - 0.5 & \text{otherwise}
+	\end{cases}
+	\]
+
+	
+\end{itemize}
+
+
+
+\textbf{Tại sao dùng Smooth L1?}
+
+\begin{itemize}
+	\item L2 loss: nhạy với outliers
+	\item L1 loss: gradient không ổn định tại 0
+\end{itemize}
+
+Smooth L1 kết hợp cả hai:
+\begin{itemize}
+	\item Quadratic gần 0 → ổn định
+	\item Linear khi lớn → robust với outliers
+\end{itemize}
+
+---
+
+\textbf{Gradient tổng:}
+
+\[
+\nabla \mathcal{L} = \nabla L_{\text{cls}} + \lambda \nabla L_{\text{reg}}
+\]
+
+\textbf{Ý nghĩa:}
+\begin{itemize}
+	\item Backbone học representation chung cho:
+	\begin{itemize}
+		\item Phân biệt class
+		\item Định vị object
+	\end{itemize}
+	\item Đây là dạng \textbf{multi-task representation learning}
+\end{itemize}
+
+---
+
+\textbf{Huấn luyện end-to-end:}
+
+\begin{itemize}
+	\item Gradient lan truyền:
+	\[
+	\text{Loss} \rightarrow \text{FC layers} \rightarrow \text{RoI Pooling} \rightarrow F \rightarrow \text{CNN}
+	\]
+	
+	```
+	\item Khác với R-CNN:
+	\begin{itemize}
+		\item Không cần SVM riêng
+		\item Không cần train regressor riêng
+	\end{itemize}
+	```
+	
+\end{itemize}
+
+\textbf{Giới hạn:} Selective Search vẫn là bước ngoài mô hình → không thể tối ưu.
+
+\begin{center} 
+	\includegraphics[width=0.8\textwidth]{images/roi_pooling_diagram.png} \captionof{figure}{Hoạt động của RoI Pooling. Một vùng đề xuất có kích thước bất kỳ trên feature map được chia lưới cố định và max-pooling được áp dụng.} \label{fig:roi_pooling} 
+\end{center}
+---
+
+\textbf{Ưu điểm so với R-CNN:}
+
+\begin{itemize}
+	\item Giảm chi phí tính toán từ $O(N \cdot \text{CNN})$ xuống gần $O(\text{CNN})$
+	\item Huấn luyện gần như end-to-end
+	\item Chia sẻ feature → tăng hiệu quả và giảm memory
+\end{itemize}
+
+---
+
+\textbf{Hạn chế:}
+
+\begin{itemize}
+	\item Phụ thuộc Selective Search (bottleneck ngoài mạng)
+	\item RoI Pooling gây mất chính xác do quantization
+	\item Gradient sparse qua max-pooling
+\end{itemize}
+
+---
+
+
+Fast R-CNN cho thấy rằng:
+\begin{itemize}
+	\item \textbf{Chia sẻ feature là chìa khóa để mở rộng CNN cho detection}
+	\item Bottleneck còn lại không phải là CNN, mà là \textbf{region proposal}
+\end{itemize}
+
+Đây chính là động lực dẫn đến Faster R-CNN với Region Proposal Network.
+
+
+\paragraph{Faster R-CNN (2016):}
+\textbf{Faster R-CNN} \cite{Ren2015} giải quyết nút thắt cuối cùng của Fast R-CNN bằng cách thay thế hoàn toàn Selective Search bằng một module học được: \textbf{Region Proposal Network (RPN)}.
+
+\textbf{Ý tưởng cốt lõi:}
+Sinh vùng đề xuất không còn là một bước heuristic độc lập, mà trở thành một bài toán học có giám sát, chia sẻ feature với detector chính.
+
+---
+
+\textbf{Feature Sharing:}
+
+\[
+F = \phi(I) = \text{CNN}(I) \in \mathbb{R}^{C \times H' \times W'}
+\]
+
+Feature map $F$ được dùng chung cho:
+\begin{itemize}
+	\item RPN (proposal generation)
+	\item Fast R-CNN head (classification + regression)
+\end{itemize}
+
+\textbf{Ý nghĩa:}
+\begin{itemize}
+	\item Giảm chi phí tính toán
+	\item Cho phép học representation tối ưu cho cả hai nhiệm vụ
+\end{itemize}
+
+---
+
+\textbf{Region Proposal Network (RPN):}
+
+RPN là một Fully Convolutional Network trượt trên $F$:
+
+\[
+z_{ij} = \text{Conv}*{3\times3}(F)*{ij}
+\]
+
+Tại mỗi vị trí $(i,j)$:
+\[
+p_{ij} \in \mathbb{R}^{2k}, \quad t_{ij} \in \mathbb{R}^{4k}
+\]
+
+\begin{itemize}
+	\item $k$: số anchor tại mỗi vị trí
+	\item $p_{ij}$: objectness scores
+	\item $t_{ij}$: bounding box offsets
+\end{itemize}
+
+---
+
+\textbf{Anchor Boxes: Rời rạc hóa không gian tìm kiếm}
+
+Tại mỗi vị trí feature map, định nghĩa tập anchor:
+\[
+{a_l}_{l=1}^k, \quad a_l = (x_a, y_a, w_a, h_a)
+\]
+
+\textbf{Phân tích:}
+\begin{itemize}
+	\item Anchor là các prior boxes cố định.
+	\item Chuyển bài toán từ:
+	\[
+	\text{predict arbitrary box} \rightarrow \text{predict offset từ anchor}
+	\]
+	\item Giảm độ khó của bài toán regression.
+\end{itemize}
+
+---
+
+\textbf{Bounding Box Parameterization:}
+
+\[
+t_x = \frac{x - x_a}{w_a},\quad
+t_y = \frac{y - y_a}{h_a},\quad
+t_w = \log \frac{w}{w_a},\quad
+t_h = \log \frac{h}{h_a}
+\]
+
+\textbf{Ý nghĩa:}
+\begin{itemize}
+	\item Scale-invariant
+	\item Log-transform giúp linear hóa scale
+\end{itemize}
+
+---
+
+\textbf{Gán nhãn anchor (Anchor Matching):}
+
+Anchor $a_i$ được gán nhãn dựa trên IoU với ground-truth:
+
+\begin{itemize}
+	\item Positive nếu:
+	\[
+	\text{IoU}(a_i, g) \geq 0.7
+	\]
+	\item Negative nếu:
+	\[
+	\text{IoU}(a_i, g) \leq 0.3
+	\]
+\end{itemize}
+
+Các anchor trung gian bị bỏ qua.
+
+\textbf{Hệ quả:}
+\begin{itemize}
+	\item Tạo margin rõ ràng giữa positive và negative
+	\item Tránh nhiễu trong gradient
+\end{itemize}
+
+---
+
+\textbf{Vấn đề mất cân bằng (Class Imbalance):}
+
+\begin{itemize}
+	\item Số anchor background $\gg$ object
+	\item Nếu train toàn bộ → model bias về background
+\end{itemize}
+
+\textbf{Giải pháp: Mini-batch sampling}
+\begin{itemize}
+	\item Sample $\sim 256$ anchors / image
+	\item Tỷ lệ positive:negative $\approx 1:1$ hoặc $1:3$
+\end{itemize}
+
+---
+
+\textbf{Hàm Loss của RPN:}
+
+\[
+\mathcal{L}*{\text{RPN}} =
+\frac{1}{N*{\text{cls}}} \sum_i L_{\text{cls}}(p_i, p_i^*)
++
+\lambda \frac{1}{N_{\text{reg}}} \sum_i p_i^* L_{\text{reg}}(t_i, t_i^*)
+\]
+
+\textbf{Phân tích:}
+
+\begin{itemize}
+	\item $L_{\text{cls}}$: cross-entropy
+	\item $L_{\text{reg}}$: Smooth L1
+	\item $p_i^*$ đóng vai trò mask → chỉ regression cho positive anchors
+\end{itemize}
+
+---
+
+\textbf{Chuẩn hóa loss:}
+
+\begin{itemize}
+	\item $N_{\text{cls}}$: số anchors trong batch
+	\item $N_{\text{reg}}$: số positive anchors
+\end{itemize}
+
+\textbf{Ý nghĩa:}
+\begin{itemize}
+	\item Cân bằng đóng góp giữa classification và regression
+	\item Tránh dominance của background samples
+\end{itemize}
+
+---
+
+\textbf{Gradient Analysis:}
+
+\[
+\nabla \mathcal{L}*{\text{RPN}} =
+\frac{1}{N*{\text{cls}}} \sum \nabla L_{\text{cls}} +
+\lambda \frac{1}{N_{\text{reg}}} \sum p_i^* \nabla L_{\text{reg}}
+\]
+
+\textbf{Ý nghĩa:}
+\begin{itemize}
+	\item Gradient từ objectness và localization cùng cập nhật backbone
+	\item Backbone học representation phục vụ proposal generation
+\end{itemize}
+
+---
+
+\textbf{Tích hợp với Fast R-CNN:}
+
+Pipeline:
+\begin{itemize}
+	\item RPN sinh proposals ${R_i}$
+	\item RoI Pooling trên $F$
+	\item Head network:
+	\begin{itemize}
+		\item Classification
+		\item Bounding box refinement
+	\end{itemize}
+\end{itemize}
+
+---
+
+\textbf{Loss toàn bộ mạng:}
+
+\[
+\mathcal{L} = \mathcal{L}*{\text{RPN}} + \mathcal{L}*{\text{detector}}
+\]
+
+\textbf{Gradient flow toàn cục:}
+
+\[
+\text{Loss} \rightarrow \text{RPN + Head} \rightarrow F \rightarrow \text{CNN}
+\]
+
+→ toàn bộ pipeline được tối ưu end-to-end.
+
+---
+
+\textbf{Huấn luyện:}
+
+\begin{itemize}
+	\item Alternating training:
+	\begin{itemize}
+		\item Train RPN
+		\item Train detector
+		\item Lặp lại
+	\end{itemize}
+	
+	```
+	\item Joint training:
+	\begin{itemize}
+		\item Tối ưu đồng thời toàn bộ mạng
+	\end{itemize}
+	```
+	
+\end{itemize}
+
+---
+
+\textbf{Ưu điểm so với Fast R-CNN:}
+
+\begin{itemize}
+	\item Loại bỏ hoàn toàn bước proposal heuristic
+	\item Pipeline fully differentiable
+	\item Feature sharing giữa proposal và detection
+\end{itemize}
+
+---
+
+Faster R-CNN chuyển bài toán:
+\begin{itemize}
+	\item Từ: \textit{generate proposals bằng heuristic}
+	\item Thành: \textit{học proposal như một bài toán classification + regression}
+\end{itemize}
+
+Đây là bước chuyển từ \textbf{pipeline rời rạc} sang \textbf{hệ thống học thống nhất}, đặt nền tảng cho toàn bộ các detector hiện đại.
+
+
+\paragraph{Mask R-CNN (2017):}
+\textbf{Mask R-CNN} \cite{He2017} là sự mở rộng trực tiếp của Faster R-CNN, nhằm giải quyết bài toán \textbf{instance segmentation} — tức là không chỉ phát hiện và định vị vật thể, mà còn phân đoạn chính xác từng pixel của mỗi đối tượng.
+
+\textbf{Ý tưởng cốt lõi:}
+Mở rộng bài toán detection từ:
+\[
+(c, b) \rightarrow (c, b, M)
+\]
+trong đó $M \in {0,1}^{H \times W}$ là mask nhị phân của từng instance.
+
+---
+
+\textbf{Kiến trúc tổng thể:}
+
+Mask R-CNN giữ nguyên pipeline của Faster R-CNN:
+\begin{itemize}
+	\item Backbone CNN → feature map $F$
+	\item RPN → proposals ${R_i}$
+	\item RoI feature extraction
+\end{itemize}
+
+Sau đó, mỗi RoI được đưa qua \textbf{ba nhánh song song}:
+\begin{itemize}
+	\item Classification head: dự đoán class
+	\item Bounding box head: hồi quy box
+	\item \textbf{Mask head: dự đoán mask}
+\end{itemize}
+
+---
+
+\textbf{RoIAlign: Khắc phục sai số lượng tử hóa}
+
+Khác với RoI Pooling, RoIAlign loại bỏ hoàn toàn phép làm tròn tọa độ.
+
+\textbf{Cơ chế:}
+
+Giả sử một điểm lấy mẫu $(x, y)$ trên feature map có tọa độ thực (không nguyên). Giá trị tại điểm này được nội suy song tuyến tính:
+
+\[
+F(x,y) = \sum_{i,j} w_{ij} F(\lfloor x \rfloor + i, \lfloor y \rfloor + j)
+\]
+
+trong đó $w_{ij}$ là trọng số nội suy dựa trên khoảng cách.
+
+\textbf{Quy trình:}
+\begin{enumerate}
+	\item Chia RoI thành $H_f \times W_f$ bins (không làm tròn biên)
+	\item Lấy nhiều điểm sample trong mỗi bin
+	\item Áp dụng bilinear interpolation tại mỗi điểm
+	\item Aggregate (thường là average)
+\end{enumerate}
+
+---
+
+\textbf{Phân tích toán học:}
+
+RoIAlign thực hiện ánh xạ:
+\[
+\mathcal{A}: \mathbb{R}^{C \times H' \times W'} \rightarrow \mathbb{R}^{C \times H_f \times W_f}
+\]
+
+\textbf{Ưu điểm so với RoI Pooling:}
+\begin{itemize}
+	\item Không có quantization error
+	\item Gradient mượt:
+	\[
+	\frac{\partial L}{\partial F(x,y)} \neq 0 \quad \forall (x,y) \text{ lân cận}
+	\]
+	\item Không còn sparse gradient như max-pooling
+\end{itemize}
+
+→ đặc biệt quan trọng cho bài toán segmentation pixel-level.
+
+---
+
+\textbf{Mask Head: Pixel-wise Prediction}
+
+Thay vì fully-connected layers, Mask R-CNN sử dụng một mạng convolution nhỏ:
+
+\[
+M_i = \sigma(\text{ConvNet}(f_i)) \in \mathbb{R}^{K \times m \times m}
+\]
+
+\begin{itemize}
+	\item $K$: số lớp
+	\item $m \times m$: resolution của mask (ví dụ $28 \times 28$)
+\end{itemize}
+
+\textbf{Cách dự đoán:}
+\begin{itemize}
+	\item Với mỗi RoI, model dự đoán $K$ mask
+	\item Chỉ chọn mask tương ứng với class ground-truth
+\end{itemize}
+
+---
+
+\textbf{Tại sao decouple mask và classification?}
+
+Khác với YOLO (joint prediction), Mask R-CNN tách riêng:
+
+\begin{itemize}
+	\item Classification: dự đoán $p(c|R_i)$
+	\item Mask: dự đoán $M_i$ độc lập theo từng class
+\end{itemize}
+
+\textbf{Lý do:}
+\begin{itemize}
+	\item Tránh coupling giữa localization và segmentation
+	\item Giúp mỗi pixel được học độc lập (pixel-wise binary classification)
+\end{itemize}
+
+---
+
+\textbf{Hàm mất mát:}
+
+\[
+L = L_{\text{cls}} + L_{\text{box}} + L_{\text{mask}}
+\]
+
+\begin{itemize}
+	\item $L_{\text{cls}}$: cross-entropy
+	\item $L_{\text{box}}$: Smooth L1
+	\item $L_{\text{mask}}$: binary cross-entropy:
+	\[
+	L_{\text{mask}} = - \frac{1}{m^2} \sum_{u,v}
+	\left[
+	M_{uv}^* \log M_{uv} + (1 - M_{uv}^*) \log(1 - M_{uv})
+	\right]
+	\]
+\end{itemize}
+
+\textbf{Lưu ý:}
+\begin{itemize}
+	\item $L_{\text{mask}}$ chỉ tính trên class đúng (không tính cho các class khác)
+	\item Đây là \textbf{pixel-wise independent classification}
+\end{itemize}
+
+---
+
+\textbf{Gradient flow:}
+
+\[
+\nabla L = \nabla L_{\text{cls}} + \nabla L_{\text{box}} + \nabla L_{\text{mask}}
+\]
+
+\begin{itemize}
+	\item Mask branch cung cấp tín hiệu gradient dày đặc (dense signal)
+	\item Giúp backbone học representation tốt hơn cho cấu trúc không gian
+\end{itemize}
+
+---
+
+\textbf{Tầm quan trọng:}
+
+Mask R-CNN cho thấy rằng:
+\begin{itemize}
+	\item Việc giữ chính xác thông tin không gian (RoIAlign) là then chốt
+	\item Detection có thể mở rộng tự nhiên sang segmentation
+\end{itemize}
+
+Nó trở thành chuẩn mực cho các bài toán:
+\begin{itemize}
+	\item Instance segmentation
+	\item Medical imaging
+	\item Autonomous driving
+\end{itemize}
+\begin{center} 
+	\includegraphics[width=0.95\textwidth]{images/mask_rcnn_diagram.png} 
+	\captionof{figure}{Kiến trúc Mask R-CNN: thêm nhánh Mask cho mỗi RoI, sử dụng RoIAlign để tăng độ chính xác của mặt nạ.} 
+	\label{fig:mask_rcnn} 
+\end{center}
+---
+
+\begin{mdframed}[style=infobox]
+	\textbf{Các Khái niệm Cốt lõi: IoU và NMS}
+	
+	\begin{itemize}
+		\item \textbf{Intersection over Union (IoU):}
+		\[
+		\text{IoU}(A, B) = \frac{\text{Area}(A \cap B)}{\text{Area}(A \cup B)}
+		\]
+		
+		```
+		\textbf{Phân tích:}
+		\begin{itemize}
+			\item Là một metric không khả vi → không dùng trực tiếp làm loss
+			\item Dùng để:
+			\begin{itemize}
+				\item Gán nhãn anchor
+				\item Đánh giá prediction
+			\end{itemize}
+		\end{itemize}
+		
+		---
+		
+		\item \textbf{Non-Maximum Suppression (NMS):}
+		
+		Given tập bounding boxes $\{b_i\}$ với score $s_i$:
+		
+		\begin{enumerate}
+			\item Chọn $b^* = \arg\max s_i$
+			\item Loại bỏ mọi $b_j$ sao cho:
+			\[
+			\text{IoU}(b^*, b_j) > \tau
+			\]
+			\item Lặp lại
+		\end{enumerate}
+		
+		\textbf{Phân tích:}
+		\begin{itemize}
+			\item Là thuật toán greedy
+			\item Không khả vi → nằm ngoài pipeline học
+		\end{itemize}
+		```
+		
+	\end{itemize}
+\end{mdframed}
+
+
+Họ R-CNN đại diện cho một quá trình tiến hóa mang tính hệ thống trong phát hiện vật thể, trong đó mỗi thế hệ mô hình không chỉ cải thiện hiệu năng mà còn tái định nghĩa cách bài toán được hình thức hóa (formulation) và tối ưu hóa.
+
+Khởi đầu với \textbf{R-CNN (2014)} \cite{Girshick2014}, bài toán phát hiện được phân rã thành ba thành phần rời rạc: sinh vùng đề xuất, trích xuất đặc trưng, và phân loại kết hợp hồi quy. Cách tiếp cận này tận dụng sức mạnh biểu diễn của CNN nhưng vẫn giữ nguyên tư duy pipeline cổ điển. Do đó, mặc dù đạt độ chính xác cao, R-CNN gặp phải hai hạn chế mang tính cấu trúc: (i) chi phí tính toán lớn do lặp lại phép tính CNN trên từng vùng đề xuất, và (ii) không thể tối ưu hóa toàn cục do các thành phần được huấn luyện độc lập.
+
+\textbf{Fast R-CNN (2015)} \cite{Girshick2015} giải quyết nút thắt về tính toán bằng cách tái cấu trúc bài toán: thay vì áp dụng CNN trên từng proposal, toàn bộ ảnh được ánh xạ một lần duy nhất sang không gian đặc trưng, và các vùng quan tâm được trích xuất thông qua phép biến đổi RoI Pooling. Về bản chất, đây là bước chuyển từ \textit{region-wise computation} sang \textit{feature sharing}, giúp giảm độ phức tạp tính toán từ $O(N \cdot \text{CNN})$ xuống $O(\text{CNN} + N)$. Đồng thời, việc tích hợp classification và bounding box regression vào một hàm mất mát thống nhất đã đưa bài toán tiến gần hơn tới huấn luyện end-to-end. Tuy nhiên, sự phụ thuộc vào Selective Search cho thấy pipeline vẫn chưa hoàn toàn khả vi và còn tồn tại một thành phần ngoại lai không thể học được.
+
+Bước ngoặt thực sự đến với \textbf{Faster R-CNN (2016)} \cite{Ren2015}, khi quá trình sinh vùng đề xuất được nội tại hóa thành một bài toán học thông qua Region Proposal Network (RPN). Về mặt bản chất, Faster R-CNN chuyển đổi bài toán từ \textit{proposal generation bằng heuristic} sang \textit{dense prediction trên không gian anchor}, trong đó mỗi anchor đóng vai trò như một giả thuyết (hypothesis) về vị trí và kích thước vật thể. Điều này cho phép mô hình học đồng thời hai nhiệm vụ: phân loại objectness và hồi quy vị trí, dưới một khung tối ưu hóa thống nhất. Quan trọng hơn, việc chia sẻ feature giữa RPN và detector chính không chỉ giảm chi phí tính toán mà còn tạo ra một dạng \textit{multi-task learning}, trong đó các tín hiệu gradient từ cả proposal và detection cùng định hình representation của backbone.
+
+Nhìn tổng thể, sự tiến hóa từ R-CNN → Fast R-CNN → Faster R-CNN phản ánh một xu hướng rõ ràng: chuyển từ pipeline rời rạc sang mô hình học thống nhất, từ heuristic sang học có giám sát, và từ tính toán lặp lại sang chia sẻ đặc trưng. Các cải tiến như RoI Pooling và RPN không chỉ là tối ưu kỹ thuật, mà còn là những bước tiến trong cách biểu diễn và giải bài toán phát hiện vật thể.
+
+Bài học quan trọng rút ra là: hiệu năng cao trong phát hiện vật thể không chỉ đến từ kiến trúc mạng mạnh hơn, mà còn từ việc thiết kế lại bài toán sao cho toàn bộ pipeline trở nên khả vi, có thể tối ưu hóa end-to-end, và tận dụng được sự chia sẻ thông tin giữa các tác vụ liên quan. Chính những nguyên lý này đã đặt nền tảng cho các bộ phát hiện một giai đoạn hiện đại như YOLO, SSD và RetinaNet, nơi toàn bộ quá trình phát hiện được mô hình hóa như một bài toán hồi quy và phân loại duy nhất trên không gian đặc trưng.
+
+\begin{center}
+	\includegraphics[width=0.95\textwidth]{images/rcnn_evolution_diagram.png}
+	\captionof{figure}{Tổng quan quá trình phát triển của họ R-CNN: từ R-CNN → Fast R-CNN → Faster R-CNN. Mỗi bước cải tiến tập trung vào tăng tốc độ, đơn giản hóa pipeline, và hướng tới huấn luyện end-to-end.}
+	\label{fig:rcnn_evolution}
+\end{center}
+
+\subsubsection{Các bộ phát hiện Một giai đoạn: Nhanh và Hiệu quả}
+\label{subsubsec:one_stage_detectors}
+
+\paragraph{YOLO (You Only Look Once, 2016–nay):}
+Họ mô hình \textbf{YOLO} \cite{Redmon2016} của Joseph Redmon đã khởi xướng một triết lý hoàn toàn khác: coi phát hiện vật thể như một bài toán hồi quy duy nhất, end-to-end và single-shot.
+
+\textbf{Nguyên lý cốt lõi:} Ảnh đầu vào được chia thành một lưới $S \times S$. Mỗi ô lưới dự đoán $B$ bounding box, confidence score, và xác suất các lớp của vật thể có tâm nằm trong ô đó. Tất cả dự đoán được thực hiện trong \textbf{một lần forward pass}, từ đó đạt tốc độ thời gian thực cao.
+
+\begin{itemize}
+	\item \textit{Loss function cơ bản (YOLOv1):}
+	\begin{equation}
+		\begin{split}
+			\mathcal{L} &= \lambda_{\text{coord}} \sum_{i=0}^{S^2} \sum_{j=0}^{B} \mathbf{1}_{ij}^{\text{obj}} 
+			\Big[ (x_i - \hat{x}_i)^2 + (y_i - \hat{y}_i)^2 \Big] \\
+			&+ \lambda_{\text{coord}} \sum_{i=0}^{S^2} \sum_{j=0}^{B} \mathbf{1}_{ij}^{\text{obj}} 
+			\Big[ (\sqrt{w_i} - \sqrt{\hat{w}_i})^2 + (\sqrt{h_i} - \sqrt{\hat{h}_i})^2 \Big] \\
+			&+ \sum_{i=0}^{S^2} \sum_{j=0}^{B} \mathbf{1}_{ij}^{\text{obj}} (C_i - \hat{C}_i)^2 \\
+			&+ \lambda_{\text{noobj}} \sum_{i=0}^{S^2} \sum_{j=0}^{B} \mathbf{1}_{ij}^{\text{noobj}} (C_i - \hat{C}_i)^2 \\
+			&+ \sum_{i=0}^{S^2} \mathbf{1}_{i}^{\text{obj}} \sum_{c \in \text{classes}} (p_i(c) - \hat{p}_i(c))^2
+		\end{split}
+	\end{equation}
+	
+	\item \textit{Tiến hóa các phiên bản YOLO:}
+	\begin{itemize}
+		\item \textbf{YOLOv1 (2016):} 
+		\begin{itemize}
+			\item Backbone: Darknet-19, đơn giản, 19 conv + 5 max-pooling.
+			\item Dự đoán trực tiếp tọa độ và class probabilities.
+			\item Hạn chế: vật thể nhỏ khó detect, không dùng anchor boxes.
+		\end{itemize}
+		
+		\item \textbf{YOLOv2 / YOLOv3 (2017–2018):} 
+		\begin{itemize}
+			\item Giới thiệu \textbf{anchor boxes}: dự đoán offsets, cải thiện dự đoán vật thể nhỏ và đa tỉ lệ.
+			\item Multi-scale prediction: dự đoán từ nhiều feature map khác nhau.
+			\item Backbone: Darknet-19 (v2), Darknet-53 (v3) với residual connections.
+			\item Loss function nâng cao: GIoU hoặc CIoU thay cho MSE bounding box.
+		\end{itemize}
+		
+		\item \textbf{YOLOv4 / YOLOv5 (2020–2021):} 
+		\begin{itemize}
+			\item Backbone CSPNet (Cross Stage Partial) tăng hiệu năng tính toán.
+			\item Neck: PANet (Path Aggregation Network) cho multi-scale feature fusion.
+			\item Augmentation mạnh: mosaic, mixup, hue-saturation-jitter, random scaling.
+			\item Optimizer: AdamW, learning rate scheduler, label smoothing.
+			\item Giữ balance speed–accuracy, tối ưu cho GPU.
+		\end{itemize}
+		
+		\item \textbf{YOLOv6–v8 (2022–2024):} 
+		\begin{itemize}
+			\item Anchor-free hoặc dynamic anchor trong một số phiên bản.
+			\item Loss function nâng cao: Varifocal Loss, CIoU/Focal Loss, cải thiện learning khi class imbalance.
+			\item Edge optimization: inference nhanh (>100 FPS), tensor cores, INT8/FP16.
+			\item Backbone \& Neck: Efficient CSP, attention blocks (CBAM, SPP), multi-scale prediction.
+			\item End-to-end pipeline hoàn thiện, dễ triển khai trên nhiều nền tảng.
+		\end{itemize}
+	\end{itemize}
+	
+	\item \textit{Bài học rút ra:}  
+	YOLO đã biến phát hiện vật thể từ bài toán nhiều giai đoạn (R-CNN) thành single-shot, end-to-end, và tiếp tục phát triển để xử lý đa dạng tỉ lệ, vật thể nhỏ, class imbalance, đồng thời tối ưu hóa cho tốc độ và hiệu năng. Đây là lý do nó trở thành chuẩn mực trong các ứng dụng thời gian thực từ YOLOv1 → YOLOv8.
+	
+	
+\end{itemize}
+
+\paragraph{YOLO (You Only Look Once, 2016–nay):}
+
+Họ mô hình \textbf{YOLO} \cite{Redmon2016} do Joseph Redmon đề xuất đã định hình lại bài toán phát hiện vật thể bằng cách chuyển từ pipeline nhiều giai đoạn sang một mô hình \textbf{single-shot, end-to-end}. Thay vì sinh proposal rồi phân loại như R-CNN, YOLO coi phát hiện vật thể là một bài toán hồi quy trực tiếp từ ảnh đầu vào sang các bounding box và xác suất lớp.
+
+---
+
+\textbf{Nguyên lý cốt lõi:}
+
+Ảnh đầu vào được chia thành lưới $S \times S$. Mỗi ô lưới chịu trách nhiệm dự đoán các vật thể có tâm nằm trong nó. Với mỗi ô, mô hình dự đoán:
+\begin{itemize}
+\item $B$ bounding boxes $(x, y, w, h)$
+\item Objectness score $P(object)$
+\item Xác suất lớp $P(class \mid object)$
+\end{itemize}
+
+Điểm confidence cuối cùng:
+\[
+score = P(object) \cdot P(class)
+\]
+
+Toàn bộ dự đoán được thực hiện trong \textbf{một lần forward pass}, giúp YOLO đạt tốc độ thời gian thực.
+
+---
+
+\textbf{Pipeline tổng thể của YOLO:}
+
+\textit{Forward pass:}
+\begin{enumerate}
+\item Input image $\rightarrow$ resize (e.g. $640 \times 640$)
+\item Backbone $\rightarrow$ trích xuất feature map:
+\[
+F \in \mathbb{R}^{C \times H \times W}
+\]
+\item Neck (FPN/PAN):
+\begin{itemize}
+	\item Kết hợp đặc trưng đa tỉ lệ
+	\item Sinh ra các feature maps: $P_3, P_4, P_5$
+\end{itemize}
+\item Detection Head:
+\begin{itemize}
+	\item Với mỗi grid cell: dự đoán $(x, y, w, h)$, objectness và class probabilities
+\end{itemize}
+\end{enumerate}
+
+\textit{Post-processing:}
+\begin{itemize}
+\item Decode bounding box từ offset
+\item Tính confidence score
+\item Áp dụng \textbf{Non-Maximum Suppression (NMS)} để loại bỏ box trùng lặp
+\end{itemize}
+
+---
+
+\textbf{Kiến trúc tổng thể: Backbone – Neck – Head}
+
+\textit{Backbone:}
+\begin{itemize}
+\item Ví dụ: Darknet-19, Darknet-53, CSPNet
+\item Bao gồm các convolutional layers với BatchNorm và activation
+\item Sử dụng residual connections:
+\[
+y = F(x) + x
+\]
+\item Vai trò: trích xuất đặc trưng ngữ nghĩa từ ảnh
+\end{itemize}
+
+\textit{Neck:}
+\begin{itemize}
+\item Feature Pyramid Network (FPN): kết hợp thông tin từ các tầng sâu và nông
+\item Path Aggregation Network (PAN): bổ sung bottom-up path
+\item Vai trò: cải thiện khả năng phát hiện vật thể đa tỉ lệ, đặc biệt là vật thể nhỏ
+\end{itemize}
+
+\textit{Detection Head:}
+
+Output tensor có dạng:
+\[
+S \times S \times (B \cdot (5 + C))
+\]
+
+Trong đó:
+\begin{itemize}
+\item $4$: tọa độ bounding box
+\item $1$: objectness
+\item $C$: số lớp
+\end{itemize}
+
+---
+
+\textbf{Anchor-based vs Anchor-free:}
+
+\textit{Anchor-based (YOLOv2–v5):}
+
+Bounding box được dự đoán dưới dạng offset:
+\[
+\begin{aligned}
+b_x &= \sigma(t_x) + c_x \\
+b_y &= \sigma(t_y) + c_y \\
+b_w &= p_w e^{t_w} \\
+b_h &= p_h e^{t_h}
+\end{aligned}
+\]
+
+Trong đó:
+\begin{itemize}
+\item $(c_x, c_y)$: vị trí ô lưới
+\item $(p_w, p_h)$: anchor box
+\item $(t_x, t_y, t_w, t_h)$: output của mạng
+\end{itemize}
+
+Anchor giúp mô hình học offset nhỏ, tăng tốc hội tụ và encode prior về kích thước vật thể.
+
+\textit{Anchor-free (YOLOv8):}
+
+\begin{itemize}
+\item Không sử dụng anchor boxes
+\item Dự đoán trực tiếp center point và khoảng cách tới 4 cạnh (l, t, r, b)
+\end{itemize}
+
+Ưu điểm:
+\begin{itemize}
+\item Đơn giản hóa thiết kế
+\item Không cần tuning anchor
+\item Khả năng tổng quát hóa tốt hơn
+\end{itemize}
+
+---
+
+\textbf{Hàm loss: từ MSE đến IoU-based}
+
+\textit{YOLOv1:} sử dụng MSE cho cả localization và classification.
+
+\textit{YOLO hiện đại:}
+
+\begin{itemize}
+\item \textbf{Localization loss:} IoU-based (GIoU, DIoU, CIoU)
+\end{itemize}
+
+Ví dụ CIoU:
+\[
+\mathcal{L}_{CIoU} = 1 - IoU + \frac{\rho^2(b, b^{gt})}{c^2} + \alpha v
+\]
+
+\begin{itemize}
+\item \textbf{Classification loss:} Binary Cross-Entropy hoặc Focal Loss
+\end{itemize}
+
+Focal Loss:
+\[
+FL(p) = -\alpha (1 - p)^\gamma \log(p)
+\]
+
+Giúp xử lý bài toán mất cân bằng lớp.
+
+---
+
+\textbf{Label assignment:}
+
+\textit{Static assignment (YOLOv3–v5):}
+\begin{itemize}
+\item Mỗi ground truth được gán cho anchor có IoU cao nhất
+\end{itemize}
+
+\textit{Dynamic assignment (YOLOv7–v8):}
+\begin{itemize}
+\item Sử dụng các phương pháp như SimOTA
+\item Một ground truth có thể gán cho nhiều prediction
+\end{itemize}
+
+Giúp tăng số lượng positive samples và cải thiện độ ổn định khi huấn luyện.
+
+---
+
+\textbf{Non-Maximum Suppression (NMS):}
+
+\begin{itemize}
+\item Loại bỏ các bounding box trùng lặp dựa trên IoU
+\end{itemize}
+
+Các biến thể:
+\begin{itemize}
+\item Soft-NMS
+\item DIoU-NMS
+\end{itemize}
+
+---
+
+\textbf{Tiến hóa các phiên bản YOLO:}
+
+\begin{itemize}
+	\item \textbf{YOLOv1 (2016 -- Redmon et al.):}
+	\begin{itemize}
+		\item \textbf{Kiến trúc:} Single-stage, end-to-end detector; chia ảnh thành lưới $S \times S$ (thường $7 \times 7$), mỗi cell dự đoán trực tiếp 2 bounding boxes, confidence score và class probabilities (không sử dụng anchor boxes, không có neck tách biệt rõ ràng). Backbone gồm 24 convolutional layers và 2 fully connected layers, lấy cảm hứng từ GoogLeNet.
+		
+		\item \textbf{Thuật toán:} Hàm loss sử dụng squared-error cho cả localization, confidence và classification, tối ưu đồng thời trong một bước huấn luyện.
+		
+		\item \textbf{Quy trình và cải tiến:} Inference chỉ cần một forward pass, đạt tốc độ thời gian thực (khoảng 45 FPS trên VOC). Việc sử dụng toàn bộ ngữ cảnh ảnh giúp giảm false positives. \textbf{Hạn chế:} hiệu suất kém đối với vật thể nhỏ, khó xử lý nhiều đối tượng trong cùng một cell, và độ chính xác localization còn hạn chế (mAP@0.5 $\approx 63.4\%$ trên VOC).
+	\end{itemize}
+	
+	\item \textbf{YOLOv2--v3 (2017--2018 -- Redmon et al.):}
+	\begin{itemize}
+		\item \textbf{Kiến trúc:} Giới thiệu anchor boxes (được khởi tạo bằng k-means clustering trên dataset) và dự đoán offsets thay vì tọa độ tuyệt đối. Áp dụng multi-scale prediction; cụ thể YOLOv3 dự đoán trên 3 tỉ lệ thông qua upsampling và concatenation tương tự FPN. Backbone được nâng cấp từ Darknet-19 (v2) lên Darknet-53 (v3) với residual connections. Bắt đầu xuất hiện cơ chế feature fusion đa tỉ lệ.
+		
+		\item \textbf{Thuật toán:} Sử dụng Batch Normalization và high-resolution classifier với đầu vào $448 \times 448$. YOLOv3 thay softmax bằng logistic classifier độc lập cho từng lớp (multi-label). Áp dụng multi-scale training trong khoảng $320$ đến $608$ pixels.
+		
+		\item \textbf{Quy trình và cải tiến:} Huấn luyện ổn định hơn và cải thiện khả năng phát hiện vật thể nhỏ. Inference vẫn đạt tốc độ thời gian thực (khoảng 30--67 FPS). Hiệu năng đạt mAP@0.5 $\approx 76.8\%$ (VOC, YOLOv2) và mAP@0.5 $\approx 57.9\%$ (COCO, YOLOv3). Đồng thời hỗ trợ huấn luyện kết hợp detection và classification (YOLO9000).
+	\end{itemize}
+	
+	\item \textbf{YOLOv4--v5 (2020--2021 -- Bochkovskiy et al. \& Ultralytics):}
+	\begin{itemize}
+		\item \textbf{Kiến trúc:} Chuẩn hóa thành ba thành phần: backbone--neck--head. Backbone sử dụng CSPDarknet-53 (YOLOv4) hoặc CSP-based architecture với SPPF (YOLOv5, tối ưu hơn SPP). Neck kết hợp SPP và PANet (Path Aggregation Network) để tăng cường feature fusion đa tỉ lệ. Detection head vẫn theo hướng anchor-based tương tự YOLOv3.
+		
+		\item \textbf{Thuật toán:} Áp dụng Bag of Freebies (Mosaic, MixUp, CutMix, Label Smoothing, DropBlock) và Bag of Specials (Mish activation, CIoU loss, Self-Adversarial Training). YOLOv5 bổ sung auto-anchor, tối ưu siêu tham số (hyperparameter evolution) và được triển khai bằng PyTorch.
+		
+		\item \textbf{Quy trình và cải tiến:} Các kỹ thuật augmentation như Mosaic giúp tăng đáng kể độ đa dạng dữ liệu huấn luyện. Inference nhanh và dễ triển khai (hỗ trợ ONNX, TensorRT). SPPF giúp giảm chi phí tính toán và bộ nhớ. Hiệu năng đạt khoảng mAP@0.5:0.95 $\approx 43.5\%$ (YOLOv4) và $\approx 50\%$ (YOLOv5) trên COCO. Cải thiện đáng kể bài toán vật thể nhỏ và độ ổn định huấn luyện.
+	\end{itemize}
+	
+	\item \textbf{YOLOv6--v8 (2022--2023 -- Meituan, WongKinYiu \& Ultralytics):}
+	\begin{itemize}
+		\item \textbf{Kiến trúc:} Xu hướng chuyển sang anchor-free hoặc hybrid. Backbone lần lượt sử dụng EfficientRep (YOLOv6, dựa trên RepVGG re-parameterization), E-ELAN (YOLOv7) và C2f module (YOLOv8). Neck sử dụng Rep-PAN hoặc FPN-style. Detection head dạng decoupled (tách riêng classification và regression) và anchor-free trong YOLOv8.
+		
+		\item \textbf{Thuật toán:} Sử dụng các hàm loss nâng cao như Varifocal Loss, GIoU/SIoU và Distribution Focal Loss (DFL). Label assignment được cải tiến với Task-Aligned Learning (TAL) và các chiến lược dynamic assignment. YOLOv8 hỗ trợ đa nhiệm (detection, segmentation, pose estimation, classification, oriented bounding box).
+		
+		\item \textbf{Quy trình và cải tiến:} Huấn luyện với dynamic label assignment, exponential moving average (EMA) và self-distillation. Inference được tối ưu nhờ re-parameterization (gộp các lớp convolution khi deploy) và quantization (FP16, INT8). Hiệu năng đạt mAP@0.5:0.95 trên COCO vượt $53\%$ với tốc độ 60--80 FPS. Cải thiện đáng kể gradient flow và khả năng phát hiện vật thể nhỏ.
+	\end{itemize}
+	
+	\item \textbf{YOLOv9--v11 (2024--2025 -- Wang et al. \& Ultralytics):}
+	\begin{itemize}
+		\item \textbf{Kiến trúc:} Tối ưu hóa gradient flow và hiệu quả biểu diễn. YOLOv9 giới thiệu GELAN (Generalized ELAN) và PGI (Programmable Gradient Information) nhằm giảm hiện tượng information bottleneck. YOLOv10 sử dụng spatial-channel decoupled downsampling và lightweight head. YOLOv11 bổ sung các module như C3k2 và C2PSA để cải thiện khả năng chú ý không gian.
+		
+		\item \textbf{Thuật toán:} YOLOv10 hỗ trợ NMS-free end-to-end inference thông qua cơ chế dual label assignment (one-to-many trong huấn luyện và one-to-one trong suy luận). Các phiên bản mới tiếp tục sử dụng các biến thể focal loss và distribution-based loss để tối ưu hóa quá trình học.
+		
+		\item \textbf{Quy trình và cải tiến:} Cải thiện khả năng lan truyền gradient (PGI) giúp hội tụ nhanh và ổn định hơn. YOLOv10 giảm độ trễ suy luận đáng kể nhờ loại bỏ bước NMS. YOLOv11 đạt hiệu năng cao với số lượng tham số giảm, cân bằng tốt giữa tốc độ và độ chính xác. Hiệu năng trên COCO vượt mAP@0.5:0.95 $54\%$, phù hợp cho các ứng dụng thời gian thực và triển khai trên edge devices.
+	\end{itemize}
+	```
+	
+\end{itemize}
+
+
+---
+
+\textbf{Insight quan trọng:}
+
+Thành công của YOLO không chỉ đến từ việc là mô hình single-shot, mà là sự kết hợp của:
+\begin{itemize}
+\item Dense prediction trên toàn ảnh
+\item Multi-scale feature fusion (FPN/PAN)
+\item IoU-based regression loss
+\item Anchor-based hoặc anchor-free design
+\item Backbone tối ưu hóa cho hiệu năng tính toán
+\end{itemize}
+
+Nhờ đó, YOLO đạt được sự cân bằng tối ưu giữa tốc độ và độ chính xác, trở thành chuẩn mực cho các ứng dụng phát hiện vật thể thời gian thực.
+
+
+\paragraph{SSD (Single Shot MultiBox Detector, 2016):}
+
+\textbf{SSD} \cite{Liu2016} là một trong những mô hình phát hiện vật thể một giai đoạn (single-stage) quan trọng, đóng vai trò cầu nối giữa YOLOv1 và các detector hiện đại. SSD kết hợp triết lý \textit{single-shot detection} với \textit{multi-scale feature representation}, cho phép đạt được sự cân bằng hiệu quả giữa tốc độ suy luận và độ chính xác.
+
+---
+
+\textbf{Nguyên lý cốt lõi:}
+
+Khác với YOLOv1 chỉ sử dụng một feature map duy nhất, SSD thực hiện dự đoán trên nhiều feature maps ở các mức độ trừu tượng khác nhau trong mạng CNN. Cụ thể:
+
+\begin{itemize}
+	\item Các feature map có độ phân giải cao (shallow layers) được sử dụng để phát hiện vật thể nhỏ.
+	\item Các feature map có độ phân giải thấp (deep layers) được sử dụng để phát hiện vật thể lớn.
+	\item Tại mỗi vị trí trên mỗi feature map, mô hình dự đoán một tập các bounding boxes cố định gọi là \textbf{default boxes} (hay anchor boxes), với nhiều tỉ lệ và aspect ratios khác nhau.
+\end{itemize}
+
+Giả sử có $m$ feature maps với kích thước khác nhau, tổng số bounding boxes được dự đoán là:
+
+\begin{equation}
+	N_{boxes} = \sum_{k=1}^{m} H_k \cdot W_k \cdot A_k
+\end{equation}
+
+trong đó $H_k, W_k$ là chiều cao và chiều rộng của feature map thứ $k$, và $A_k$ là số default boxes tại mỗi vị trí.
+
+---
+
+\textbf{Kiến trúc tổng thể:}
+
+SSD bao gồm ba thành phần chính: \textit{backbone, extra feature layers và prediction heads}.
+
+\textit{Backbone:}
+\begin{itemize}
+	\item Thường sử dụng VGG-16 (được cắt bỏ fully connected layers)
+	\item Các layer như conv4\_3 và conv7 được sử dụng trực tiếp để dự đoán
+\end{itemize}
+
+\textit{Extra feature layers:}
+\begin{itemize}
+	\item Các convolutional layers bổ sung được thêm vào sau backbone
+	\item Mỗi layer có kích thước nhỏ dần (ví dụ: $38 \times 38$, $19 \times 19$, $10 \times 10$, ...)
+	\item Cho phép mô hình học biểu diễn đa tỉ lệ
+\end{itemize}
+
+\textit{Prediction heads:}
+\begin{itemize}
+	\item Mỗi feature map được gắn với hai convolution:
+	\begin{itemize}
+		\item Localization head: dự đoán offsets $(\Delta x, \Delta y, \Delta w, \Delta h)$
+		\item Confidence head: dự đoán class scores
+	\end{itemize}
+\end{itemize}
+
+---
+
+\textbf{Thiết kế default boxes (anchor boxes):}
+
+SSD sử dụng một tập các default boxes với nhiều tỉ lệ khác nhau:
+
+\begin{equation}
+	s_k = s_{min} + \frac{s_{max} - s_{min}}{m - 1} (k - 1)
+\end{equation}
+
+trong đó:
+\begin{itemize}
+	\item $s_k$: scale của feature map thứ $k$
+	\item $s_{min}, s_{max}$: scale tối thiểu và tối đa
+\end{itemize}
+
+Aspect ratios thường được chọn:
+\[
+{1, 2, 3, \tfrac{1}{2}, \tfrac{1}{3}}
+\]
+
+Điều này giúp bao phủ tốt các hình dạng vật thể khác nhau.
+
+---
+
+\textbf{Bounding box parameterization:}
+
+SSD không dự đoán trực tiếp tọa độ tuyệt đối, mà dự đoán offsets so với default box:
+
+\begin{align}
+	t_x &= \frac{x - d_x}{d_w}, \quad
+	t_y = \frac{y - d_y}{d_h} \\
+	t_w &= \log \left( \frac{w}{d_w} \right), \quad
+	t_h = \log \left( \frac{h}{d_h} \right)
+\end{align}
+
+Trong đó:
+\begin{itemize}
+	\item $(d_x, d_y, d_w, d_h)$: default box
+	\item $(x, y, w, h)$: ground truth box
+\end{itemize}
+
+---
+
+\textbf{Matching strategy (label assignment):}
+
+SSD sử dụng cơ chế matching giữa default boxes và ground truth dựa trên IoU:
+
+\begin{itemize}
+	\item Mỗi ground truth được gán với default box có IoU cao nhất
+	\item Các default boxes có IoU $> 0.5$ cũng được gán là positive
+\end{itemize}
+
+Kết quả:
+\begin{itemize}
+	\item Positive samples: dùng cho cả localization và classification
+	\item Negative samples: chỉ dùng cho classification
+\end{itemize}
+
+---
+
+\textbf{Hard Negative Mining:}
+
+Do số lượng negative samples rất lớn, SSD áp dụng chiến lược:
+
+\begin{itemize}
+	\item Sắp xếp negative samples theo confidence loss giảm dần
+	\item Chọn tối đa tỷ lệ:
+	\[
+	\frac{N_{neg}}{N_{pos}} \leq 3
+	\]
+\end{itemize}
+
+Điều này giúp giảm mất cân bằng lớp và ổn định quá trình huấn luyện.
+
+---
+
+\textbf{Hàm loss tổng thể:}
+
+\begin{equation}
+	\mathcal{L}(x, c, l, g) = \frac{1}{N} \left( \mathcal{L}_{conf}(x, c) + \alpha \mathcal{L}_{loc}(x, l, g) \right)
+\end{equation}
+
+\textit{Localization loss (Smooth L1):}
+\begin{equation}
+	\mathcal{L}_{loc} = \sum_{i \in Pos} \sum_{m \in {x,y,w,h}}
+	\text{smooth}_{L1}(l_i^m - \hat{g}_i^m)
+\end{equation}
+
+\textit{Confidence loss (Softmax cross-entropy):}
+\begin{equation}
+	\mathcal{L}_{conf} = \sum_{i \in Pos} \underbrace{-\log(\hat{c}_i^{p})}_{\text{positive loss}}
+	+ \sum_{i \in Neg} \underbrace{-\log(\hat{c}_i^{0})}_{\text{negative loss}}
+\end{equation}
+
+---
+
+\textbf{Pipeline huấn luyện và suy luận:}
+
+\textit{Training:}
+\begin{enumerate}
+	\item Input image $\rightarrow$ data augmentation (random crop, flip, photometric distortion)
+	\item Forward pass qua backbone và extra layers
+	\item Matching default boxes với ground truth
+	\item Tính loss (loc + conf)
+	\item Hard negative mining
+	\item Backpropagation
+\end{enumerate}
+
+\textit{Inference:}
+\begin{enumerate}
+	\item Forward pass
+	\item Decode bounding boxes từ offsets
+	\item Tính confidence scores
+	\item Áp dụng Non-Maximum Suppression (NMS)
+\end{enumerate}
+
+---
+
+\textbf{Ưu điểm:}
+
+\begin{itemize}
+	\item Tốc độ cao (real-time, $\sim 59$ FPS với SSD300)
+	\item Kiến trúc đơn giản, dễ triển khai
+	\item Multi-scale detection hiệu quả hơn YOLOv1
+\end{itemize}
+
+---
+
+\textbf{Hạn chế:}
+
+\begin{itemize}
+	\item Hiệu năng với vật thể nhỏ vẫn hạn chế (do thiếu feature fusion mạnh như FPN)
+	\item Default boxes cần thiết kế thủ công
+	\item Không có cơ chế attention hoặc dynamic assignment
+\end{itemize}
+
+---
+
+\textbf{Insight quan trọng:}
+
+SSD cho thấy rằng:
+\begin{itemize}
+	\item Việc sử dụng \textbf{multi-scale feature maps} là chìa khóa để cải thiện phát hiện vật thể
+	\item Anchor-based dense prediction có thể đạt hiệu năng cao mà không cần proposal stage
+	\item Hard negative mining là yếu tố quan trọng để xử lý class imbalance
+\end{itemize}
+
+Những ý tưởng này đã trở thành nền tảng cho nhiều mô hình hiện đại như RetinaNet (Focal Loss) và các detector dựa trên FPN.
+
+
+\paragraph{RetinaNet và Focal Loss (2017):}
+
+Một trong những vấn đề cốt lõi của các mô hình phát hiện vật thể một giai đoạn (single-stage detectors) là \textbf{mất cân bằng lớp cực độ} giữa foreground và background. Trong quá trình huấn luyện với dense prediction, số lượng anchor thuộc lớp nền (negative samples) thường lớn hơn hàng nghìn lần so với anchor chứa vật thể (positive samples). Điều này khiến các hàm loss truyền thống như cross-entropy bị chi phối bởi các mẫu dễ (easy negatives), làm suy giảm khả năng học các mẫu khó và ảnh hưởng đến hiệu năng tổng thể.
+
+\textbf{RetinaNet} được đề xuất nhằm giải quyết trực tiếp vấn đề này thông qua việc kết hợp một kiến trúc mạnh với một hàm loss mới: \textbf{Focal Loss}.
+
+---
+
+\textbf{Kiến trúc RetinaNet:}
+
+RetinaNet là một mô hình single-stage detector dựa trên cơ chế \textbf{dense prediction} với ba thành phần chính: backbone, feature pyramid và prediction heads.
+
+\textit{Backbone và Feature Pyramid Network (FPN):}
+\begin{itemize}
+	\item Backbone thường sử dụng ResNet (ResNet-50 hoặc ResNet-101) để trích xuất đặc trưng.
+	\item Feature Pyramid Network (FPN) được xây dựng trên backbone nhằm tạo ra các feature maps đa tỉ lệ ${P_3, P_4, P_5, P_6, P_7}$.
+	\item FPN sử dụng cơ chế top-down pathway và lateral connections:
+	\begin{itemize}
+		\item Upsample feature map từ tầng sâu
+		\item Kết hợp với feature map tương ứng từ backbone
+	\end{itemize}
+\end{itemize}
+
+Điều này cho phép RetinaNet phát hiện vật thể ở nhiều kích thước khác nhau với độ chính xác cao.
+
+---
+
+\textit{Detection Head:}
+
+RetinaNet sử dụng hai subnet riêng biệt (decoupled head):
+
+\begin{itemize}
+	\item \textbf{Classification subnet:}
+	\begin{itemize}
+		\item Gồm nhiều convolution layers (thường 4 layers)
+		\item Output: xác suất lớp cho mỗi anchor
+	\end{itemize}
+	
+	```
+	\item \textbf{Regression subnet:}
+	\begin{itemize}
+		\item Cấu trúc tương tự classification subnet
+		\item Output: offsets $(t_x, t_y, t_w, t_h)$ cho bounding box
+	\end{itemize}
+	```
+	
+\end{itemize}
+
+Hai subnet này \textbf{không chia sẻ tham số}, giúp tối ưu riêng cho từng nhiệm vụ.
+
+---
+
+\textbf{Anchor-based dense prediction:}
+
+Tại mỗi vị trí trên mỗi feature map, RetinaNet đặt nhiều anchor boxes với các scale và aspect ratio khác nhau. Tổng số anchor có thể lên đến hàng trăm nghìn trên một ảnh.
+
+Bounding box được tham số hóa tương tự SSD:
+
+\begin{align}
+	t_x &= \frac{x - a_x}{a_w}, \quad
+	t_y = \frac{y - a_y}{a_h} \
+	t_w &= \log \left( \frac{w}{a_w} \right), \quad
+	t_h = \log \left( \frac{h}{a_h} \right)
+\end{align}
+
+---
+
+\textbf{Focal Loss:}
+
+Focal Loss được thiết kế để giảm ảnh hưởng của các mẫu dễ và tập trung vào các mẫu khó:
+
+\begin{equation}
+	\text{FL}(p_t) = - \alpha_t (1 - p_t)^{\gamma} \log(p_t)
+\end{equation}
+
+Trong đó:
+\begin{itemize}
+	\item $p_t = p$ nếu mẫu thuộc lớp dương, và $p_t = 1 - p$ nếu là lớp âm
+	\item $\alpha_t$: hệ số cân bằng giữa các lớp
+	\item $\gamma \geq 0$: tham số điều chỉnh mức độ tập trung vào mẫu khó
+\end{itemize}
+
+---
+
+\textbf{Phân tích hành vi của Focal Loss:}
+
+So với cross-entropy:
+\[
+CE(p_t) = - \log(p_t)
+\]
+
+Focal Loss bổ sung hệ số:
+\[
+(1 - p_t)^{\gamma}
+\]
+
+\textit{Trường hợp mẫu dễ:}
+\begin{itemize}
+	\item $p_t \rightarrow 1$
+	\item $(1 - p_t)^{\gamma} \rightarrow 0$
+	\item $\Rightarrow$ loss giảm mạnh
+\end{itemize}
+
+\textit{Trường hợp mẫu khó:}
+\begin{itemize}
+	\item $p_t \rightarrow 0$
+	\item $(1 - p_t)^{\gamma} \approx 1$
+	\item $\Rightarrow$ loss gần như giữ nguyên
+\end{itemize}
+
+---
+
+\textbf{Phân tích gradient (điểm quan trọng):}
+
+Gradient của Focal Loss có dạng:
+
+\begin{equation}
+	\frac{\partial FL}{\partial z} \propto (1 - p_t)^{\gamma} \left( \gamma p_t \log(p_t) + p_t - 1 \right)
+\end{equation}
+
+Điều này cho thấy:
+\begin{itemize}
+	\item Gradient của các mẫu dễ bị giảm mạnh
+	\item Gradient tập trung vào các mẫu khó
+\end{itemize}
+
+Đây là cơ chế chính giúp giải quyết mất cân bằng lớp mà không cần hard negative mining như SSD.
+
+---
+
+\textbf{Hàm loss tổng thể:}
+
+RetinaNet sử dụng:
+\begin{itemize}
+	\item Focal Loss cho classification
+	\item Smooth L1 hoặc IoU-based loss cho localization
+\end{itemize}
+
+---
+
+\textbf{Pipeline huấn luyện và suy luận:}
+
+\textit{Training:}
+\begin{enumerate}
+	\item Input image $\rightarrow$ backbone (ResNet)
+	\item Feature extraction $\rightarrow$ FPN
+	\item Sinh anchor boxes trên tất cả feature maps
+	\item Matching với ground truth (IoU-based)
+	\item Tính Focal Loss (classification) + localization loss
+	\item Backpropagation
+\end{enumerate}
+
+\textit{Inference:}
+\begin{enumerate}
+	\item Forward pass
+	\item Decode bounding boxes
+	\item Tính confidence score
+	\item Áp dụng Non-Maximum Suppression (NMS)
+\end{enumerate}
+
+---
+
+\textbf{Ưu điểm:}
+
+\begin{itemize}
+	\item Giải quyết hiệu quả class imbalance mà không cần hard negative mining
+	\item Độ chính xác cao, vượt Faster R-CNN trong nhiều benchmark
+	\item Kiến trúc đơn giản, dễ mở rộng
+\end{itemize}
+
+---
+
+\textbf{Hạn chế:}
+
+\begin{itemize}
+	\item Vẫn phụ thuộc vào anchor boxes (cần tuning)
+	\item Số lượng anchor lớn $\rightarrow$ chi phí tính toán cao
+	\item Focal Loss cần tuning tham số $\gamma$ và $\alpha$
+\end{itemize}
+
+---
+
+\textbf{Insight quan trọng:}
+
+RetinaNet chứng minh rằng:
+\begin{itemize}
+	\item Vấn đề chính của single-stage detector không nằm ở kiến trúc mà ở \textbf{hàm loss}
+	\item Việc điều chỉnh phân phối gradient (gradient reweighting) quan trọng hơn việc loại bỏ mẫu
+	\item Dense detection có thể đạt độ chính xác cao nếu xử lý tốt class imbalance
+\end{itemize}
+
+Focal Loss đã trở thành nền tảng cho nhiều phương pháp sau này, bao gồm các biến thể như Quality Focal Loss và Distribution Focal Loss trong các detector hiện đại.
+
+\subsection{Kỷ nguyên Transformer: DETR và các Cải tiến}
+\label{subsec:transformer_based_detectors}
+
+Năm 2020, Facebook AI Research đề xuất \textbf{DEtection TRansformer (DETR)} \cite{Carion2020}, đánh dấu một bước chuyển quan trọng trong bài toán phát hiện vật thể: chuyển từ \textit{dense prediction với heuristic} sang \textbf{set prediction end-to-end}. DETR loại bỏ hoàn toàn các thành phần thủ công như anchor boxes, Region Proposal Network (RPN) và Non-Maximum Suppression (NMS), thay vào đó sử dụng Transformer để trực tiếp ánh xạ ảnh đầu vào thành một tập các đối tượng.
+
+---
+
+\paragraph{Bài toán set prediction:}
+
+Khác với các detector truyền thống dự đoán hàng nghìn bounding boxes rồi lọc bằng NMS, DETR mô hình hóa bài toán detection như một phép ánh xạ:
+
+\begin{equation}
+	f: \mathcal{I} \rightarrow {(y_i, b_i)}_{i=1}^{N}
+\end{equation}
+
+trong đó:
+\begin{itemize}
+	\item $\mathcal{I}$: ảnh đầu vào
+	\item $y_i$: nhãn lớp
+	\item $b_i$: bounding box
+	\item $N$: số lượng dự đoán cố định (ví dụ 100 object queries)
+\end{itemize}
+
+Tập dự đoán này là \textbf{không có thứ tự} (permutation-invariant), do đó cần một cơ chế matching tối ưu để so sánh với ground truth.
+
+---
+
+\paragraph{Kiến trúc tổng thể:}
+
+DETR bao gồm ba thành phần chính: backbone CNN, Transformer encoder-decoder và prediction heads.
+
+\textit{Backbone CNN:}
+\begin{itemize}
+	\item Sử dụng ResNet-50 hoặc ResNet-101 để trích xuất feature map:
+	\[
+	F \in \mathbb{R}^{C \times H \times W}
+	\]
+	\item Feature map được giảm chiều (thường qua $1 \times 1$ convolution)
+\end{itemize}
+
+---
+
+\textit{Transformer Encoder:}
+
+Feature map được reshape thành chuỗi:
+\[
+X \in \mathbb{R}^{(H \cdot W) \times C}
+\]
+
+Sau đó bổ sung positional encoding và đưa vào encoder:
+
+\begin{itemize}
+	\item Self-attention:
+	\[
+	\text{Attention}(Q, K, V) = \text{softmax}\left(\frac{QK^T}{\sqrt{d}}\right)V
+	\]
+	\item Mỗi vị trí học được thông tin ngữ cảnh toàn cục
+\end{itemize}
+
+---
+
+\textit{Transformer Decoder và Object Queries:}
+
+Decoder nhận vào:
+\begin{itemize}
+	\item Output từ encoder (memory)
+	\item Một tập các vector học được gọi là \textbf{object queries}:
+	\[
+	Q \in \mathbb{R}^{N \times d}
+	\]
+\end{itemize}
+
+Mỗi query tương tác với toàn bộ feature thông qua cross-attention:
+\begin{itemize}
+	\item Query học cách “tập trung” vào một đối tượng cụ thể
+	\item Mỗi query tương ứng với một dự đoán object
+\end{itemize}
+
+---
+
+\textit{Prediction Heads:}
+
+Output của mỗi query được đưa qua một feed-forward network (FFN):
+
+\begin{itemize}
+	\item Classification head: dự đoán xác suất lớp (bao gồm class "no object")
+	\item Regression head: dự đoán bounding box chuẩn hóa $(x, y, w, h)$
+\end{itemize}
+
+---
+
+\paragraph{Hungarian Bipartite Matching:}
+
+Để huấn luyện mô hình, DETR sử dụng \textbf{Hungarian matching} để tìm ánh xạ tối ưu giữa tập dự đoán và ground truth.
+
+Chi phí matching được định nghĩa:
+
+\begin{equation}
+	\mathcal{L}*{match}(i, j) = - \log p_i(y_j) + \lambda \cdot \mathcal{L}*{box}(b_i, b_j)
+\end{equation}
+
+Bài toán matching:
+
+\begin{equation}
+	\hat{\sigma} = \arg\min_{\sigma} \sum_{i=1}^{N} \mathcal{L}_{match}(i, \sigma(i))
+\end{equation}
+
+trong đó $\sigma$ là một hoán vị.
+
+Ý nghĩa:
+\begin{itemize}
+	\item Mỗi ground truth được gán với đúng một prediction
+	\item Loại bỏ hoàn toàn duplicate predictions $\rightarrow$ không cần NMS
+\end{itemize}
+
+---
+
+\paragraph{Hàm loss tổng thể:}
+
+Sau khi matching, loss được tính:
+
+\begin{equation}
+	\mathcal{L} = \sum_{i=1}^{N} \left( \mathcal{L}*{cls} + \lambda*{1} \mathcal{L}*{L1} + \lambda*{2} \mathcal{L}_{IoU} \right)
+\end{equation}
+
+\begin{itemize}
+	\item $\mathcal{L}*{cls}$: cross-entropy (bao gồm class "no object")
+	\item $\mathcal{L}*{L1}$: khoảng cách giữa bounding boxes
+	\item $\mathcal{L}_{IoU}$: GIoU loss
+\end{itemize}
+
+---
+
+\paragraph{Tại sao DETR không cần NMS:}
+
+Trong các mô hình truyền thống:
+\begin{itemize}
+	\item Nhiều prediction trùng nhau $\rightarrow$ cần NMS
+\end{itemize}
+
+Trong DETR:
+\begin{itemize}
+	\item Hungarian matching đảm bảo mỗi object chỉ được dự đoán một lần
+	\item Các query học phân công nhiệm vụ (implicit assignment)
+\end{itemize}
+
+$\Rightarrow$ mô hình trở thành \textbf{set predictor thuần túy}.
+
+---
+
+\paragraph{Hạn chế của DETR:}
+
+\begin{itemize}
+	\item \textbf{Hội tụ chậm:}
+	\begin{itemize}
+		\item Matching không ổn định ở giai đoạn đầu
+		\item Gradient sparse do one-to-one assignment
+	\end{itemize}
+	\item \textbf{Hiệu năng kém với vật thể nhỏ:}
+	\begin{itemize}
+		\item Attention toàn cục trên feature map coarse
+		\item Thiếu multi-scale feature mạnh như FPN
+	\end{itemize}
+	```
+	
+\end{itemize}
+
+---
+
+\paragraph{Các cải tiến quan trọng:}
+
+\textit{Deformable DETR:}
+\begin{itemize}
+	\item Thay global attention bằng attention trên một số điểm tham chiếu
+	\item Giảm độ phức tạp từ $O(N^2)$ xuống gần tuyến tính
+	\item Hỗ trợ multi-scale feature
+	\item Cải thiện tốc độ hội tụ và small object detection
+\end{itemize}
+
+\textit{DN-DETR và DINO:}
+\begin{itemize}
+	\item Giới thiệu denoising queries
+	\item Ổn định quá trình huấn luyện
+	\item Tăng tốc hội tụ đáng kể
+\end{itemize}
+
+\textit{Conditional / Anchor DETR:}
+\begin{itemize}
+	\item Kết hợp ý tưởng anchor vào query
+	\item Giúp query hội tụ nhanh hơn
+\end{itemize}
+
+---
+
+\paragraph{Insight quan trọng:}
+
+DETR mang lại một góc nhìn hoàn toàn mới:
+
+\begin{itemize}
+	\item Detection có thể được mô hình hóa như \textbf{set prediction} thay vì dense classification
+	\item Việc loại bỏ heuristic (anchor, NMS) giúp pipeline đơn giản và nhất quán
+	\item Transformer cho phép học quan hệ toàn cục giữa các object
+\end{itemize}
+
+Tuy nhiên, DETR cũng cho thấy rằng:
+\begin{itemize}
+	\item One-to-one assignment tuy elegant nhưng gây khó khăn cho optimization
+	\item Multi-scale và local inductive bias vẫn rất quan trọng
+\end{itemize}
+
+Các biến thể sau này kết hợp giữa Transformer và inductive bias của CNN, tạo ra các mô hình mạnh mẽ hơn, cân bằng giữa tính tổng quát và hiệu quả huấn luyện.
+
+\subsection{YOLO Thế hệ Mới và Các Hướng đi Tiên phong}
+\label{subsec:new_generation_yolo}
+
+Bên cạnh sự phát triển liên tục của các phiên bản YOLO truyền thống, những năm gần đây chứng kiến sự xuất hiện của các hướng tiếp cận mới nhằm giải quyết các giới hạn cốt lõi của object detection, bao gồm: phụ thuộc vào thiết kế thủ công, giới hạn tập lớp, và chi phí triển khai. Các mô hình YOLO thế hệ mới không chỉ cải tiến kiến trúc mà còn mở rộng bài toán sang các thiết lập tổng quát hơn như \textit{open-vocabulary detection} và \textit{automated model design}.
+
+---
+
+\paragraph{YOLO-NAS (2023): Neural Architecture Search cho Detection}
+
+\textbf{YOLO-NAS} áp dụng \textbf{Neural Architecture Search (NAS)} để tự động tìm kiếm kiến trúc tối ưu thay vì thiết kế thủ công như các phiên bản YOLO trước đó.
+
+\textit{Nguyên lý:}
+\begin{itemize}
+	\item Xây dựng một không gian kiến trúc (search space) bao gồm:
+	\begin{itemize}
+		\item Các block convolution (CSP, bottleneck, depthwise conv)
+		\item Kích thước kernel, số channel
+		\item Cấu trúc backbone và neck
+	\end{itemize}
+	
+	\item Sử dụng chiến lược tìm kiếm (evolutionary search hoặc gradient-based NAS) để tối ưu:
+	\[
+	\max_{\mathcal{A}} \big( \text{Accuracy}(\mathcal{A}) - \lambda \cdot \text{Latency}(\mathcal{A}) \big)
+	\]
+	
+	\item Quá trình search được thực hiện dưới ràng buộc tài nguyên (FLOPs, latency, memory)
+\end{itemize}
+
+\textit{Kiến trúc:}
+\begin{itemize}
+	\item Backbone và neck được thiết kế tự động
+	\item Head vẫn theo hướng decoupled (classification và regression)
+	\item Sử dụng quantization-aware training (QAT) để tối ưu triển khai INT8
+\end{itemize}
+
+\textit{Ý nghĩa:}
+\begin{itemize}
+	\item Loại bỏ phụ thuộc vào kinh nghiệm thiết kế thủ công
+	\item Tạo ra các mô hình tối ưu riêng cho từng nền tảng (edge, mobile, server)
+\end{itemize}
+
+---
+
+\paragraph{YOLO-World (2024): Open-Vocabulary Detection}
+
+\textbf{YOLO-World} mở rộng bài toán detection từ closed-set sang \textbf{open-vocabulary}, cho phép phát hiện các đối tượng chưa xuất hiện trong dữ liệu huấn luyện.
+
+\textit{Nguyên lý cốt lõi:}
+
+Mô hình kết hợp biểu diễn thị giác với embedding ngôn ngữ từ các mô hình foundation như CLIP:
+
+\begin{itemize}
+	\item Ảnh đầu vào được encode thành đặc trưng thị giác:
+	\[
+	f_v = \phi_{\text{vision}}(I)
+	\]
+	
+	\item Văn bản (prompt) được encode thành embedding ngôn ngữ:
+	\[
+	f_t = \phi_{\text{text}}(T)
+	\]
+	
+	\item Phân loại dựa trên độ tương đồng cosine:
+	\[
+	\text{score} = \frac{f_v \cdot f_t}{|f_v| \, |f_t|}
+	\]
+\end{itemize}
+
+---
+
+\textit{Cơ chế tích hợp với YOLO:}
+
+\begin{itemize}
+	\item Detection head không còn dự đoán class cố định
+	\item Thay vào đó, dự đoán embedding vector cho mỗi bounding box
+	\item So khớp embedding này với embedding văn bản
+\end{itemize}
+
+\textit{Ưu điểm:}
+\begin{itemize}
+	\item Có thể phát hiện object chưa từng thấy (zero-shot detection)
+	\item Linh hoạt với input dạng ngôn ngữ tự nhiên
+\end{itemize}
+
+\textit{Thách thức:}
+\begin{itemize}
+	\item Alignment giữa vision và language chưa hoàn hảo
+	\item Độ chính xác thấp hơn so với closed-set detection trong một số trường hợp
+\end{itemize}
+
+---
+
+\paragraph{Các hướng phát triển mới:}
+
+\textit{1. Automated model design:}
+\begin{itemize}
+	\item NAS, AutoML giúp tối ưu kiến trúc theo phần cứng
+	\item Xu hướng chuyển từ \textit{human-designed} sang \textit{data-driven design}
+\end{itemize}
+
+\textit{2. Multi-modal learning:}
+\begin{itemize}
+	\item Kết hợp hình ảnh, ngôn ngữ và ngữ cảnh
+	\item Ứng dụng trong robotics, autonomous systems, AR/VR
+\end{itemize}
+
+\textit{3. Efficient inference:}
+\begin{itemize}
+	\item Quantization (INT8, FP16)
+	\item Pruning, knowledge distillation
+	\item Tối ưu cho edge devices (Jetson, mobile)
+\end{itemize}
+
+\textit{4. Generalization beyond closed-set:}
+\begin{itemize}
+	\item Open-vocabulary detection
+	\item Zero-shot và few-shot learning
+	\item Unified models cho nhiều tác vụ (detect, segment, caption)
+\end{itemize}
+
+---
+
+\paragraph{Insight quan trọng:}
+
+Các thế hệ YOLO mới cho thấy một sự chuyển dịch quan trọng trong object detection:
+
+\begin{itemize}
+	\item Từ \textbf{thiết kế thủ công} sang \textbf{tự động hóa kiến trúc} (NAS)
+	\item Từ \textbf{closed-set detection} sang \textbf{open-world perception}
+	\item Từ \textbf{vision-only} sang \textbf{multi-modal understanding}
+\end{itemize}
+
+Điều này phản ánh xu hướng chung của lĩnh vực thị giác máy tính: xây dựng các hệ thống có khả năng \textbf{hiểu môi trường một cách linh hoạt và tổng quát}, thay vì chỉ giải quyết các bài toán hẹp với tập lớp cố định. Các mô hình như YOLO-World là bước tiến đầu tiên hướng tới một \textbf{universal perception system}, có thể tích hợp nhận diện, mô tả và suy luận trong cùng một kiến trúc.
+
+\subsection{Các Kiến trúc Nhận biết Góc quay và Anchor-Free}
+\label{subsec:angle_aware_anchor_free}
+
+\begin{description}
+	\item[Phát hiện Vật thể có Góc quay (Rotated Object Detection):] 
+	Trong nhiều ứng dụng thực tế như ảnh viễn thám, OCR, hay robot gắp hàng, các vật thể thường không nằm thẳng hàng với trục của ảnh. Thay vì dùng bounding box trục-aligned truyền thống $(x, y, w, h)$, các kiến trúc này dự đoán một bounding box có 5 tham số $(x, y, w, h, \theta)$:
+	\begin{itemize}
+		\item $\theta$: góc quay của vật thể so với trục x.
+		\item Giúp bao quanh đối tượng một cách chặt chẽ hơn, cải thiện IoU và độ chính xác cho vật thể nghiêng hoặc dài.
+		\item Các mô hình rotated detection thường cần:
+		\begin{itemize}
+			\item \textbf{Representation strategies:} sử dụng $R$-box (rotated box) hoặc polygon-based để mô tả hình dạng vật thể.
+			\item \textbf{Angle regression loss:} Smooth L1 hoặc IoU-based loss mở rộng cho góc quay, đôi khi kết hợp với Modulo 180/360 để tránh discontinuity.
+			\item \textbf{Anchor design (nếu anchor-based):} anchors cần thêm orientation parameter để bao phủ các góc quay phổ biến.
+		\end{itemize}
+		\item Thường kết hợp với anchor-based hoặc anchor-free approaches, tùy kiến trúc.
+	\end{itemize}
+	
+	\item[Anchor-based vs. Anchor-free:] 
+	Cuộc tranh luận về việc có nên sử dụng "khung neo" hay không vẫn tiếp diễn.
+	\begin{itemize}
+		\item \textbf{Anchor-based (ví dụ: Faster R-CNN, YOLOv3, RetinaNet):} 
+		\begin{itemize}
+			\item Sử dụng một tập hợp các anchor box được định nghĩa trước với nhiều scale và aspect ratio, đôi khi thêm rotation parameter.
+			\item Ưu điểm: huấn luyện ổn định, dễ hội tụ; đã chứng minh hiệu quả trong các mô hình truyền thống.
+			\item Nhược điểm: cần tinh chỉnh nhiều siêu tham số, tạo ra nhiều box dư thừa, ảnh hưởng tốc độ inference; khó mở rộng cho rotated objects nếu số lượng anchor tăng nhiều.
+		\end{itemize}
+		\item \textbf{Anchor-free (ví dụ: FCOS, CenterNet, YOLOX, Oriented RepPoints):} 
+		\begin{itemize}
+			\item Dự đoán trực tiếp các điểm chính (như tâm, góc, kích thước) của vật thể mà không dựa vào anchor box.
+			\item Ưu điểm: thiết kế đơn giản, thường nhanh hơn, dễ mở rộng sang rotated detection; không cần grid tuning.
+			\item Nhược điểm: đôi khi cần loss function tinh vi hơn và sampling strategy để học tốt các vật thể nhỏ hoặc hiếm.
+			\item Kỹ thuật hỗ trợ: sử dụng IoU-guided loss, focal loss, hoặc center-ness score để cải thiện hiệu năng.
+			\item Xu hướng hiện nay: anchor-free đang trở thành tiêu chuẩn trong nhiều bộ phát hiện hiện đại, đặc biệt cho các phiên bản YOLOv6–v8, các mô hình lightweight, và các mô hình oriented object detection.
+		\end{itemize}
+	\end{itemize}
+	
+	\item[Hybrid approaches:] Một số mô hình hiện đại kết hợp cả anchor-free và rotated anchor để tận dụng điểm mạnh của cả hai phương pháp. Ví dụ, sử dụng anchor-free để dự đoán center và kích thước, nhưng thêm orientation prediction head để cải thiện độ chính xác cho vật thể dài hoặc nghiêng.
+\end{description}
+
+\paragraph{Ứng dụng thực tế:}  
+Các kiến trúc rotated và anchor-free cực kỳ hữu ích trong giám sát hàng không (aerial imagery), nhận diện biển báo, OCR, robot tự động, và các ứng dụng công nghiệp, nơi các vật thể thường xuất hiện với nhiều góc quay khác nhau và cần inference nhanh. Ngoài ra, trong các bài toán tự động hóa logistics hoặc kiểm tra chất lượng sản phẩm, rotated anchor-free detector giúp giảm false positive và bao quanh vật thể chính xác hơn.
+
+\section*{Tài liệu tham khảo}
+\begin{itemize}
+	\item[1] Girshick, R., Donahue, J., Darrell, T., \& Malik, J. (2014). Rich feature hierarchies for accurate object detection and semantic segmentation. In \textit{CVPR}. (Paper gốc về R-CNN).
+	\item[2] Girshick, R. (2015). Fast r-cnn. In \textit{ICCV}. (Paper gốc về Fast R-CNN).
+	\item[3] Ren, S., He, K., Girshick, R., \& Sun, J. (2015). Faster r-cnn: Towards real-time object detection with region proposal networks. In \textit{NeurIPS}. (Paper gốc về Faster R-CNN và RPN).
+	\item[4] Redmon, J., Divvala, S., Girshick, R., \& Farhadi, A. (2016). You only look once: Unified, real-time object detection. In \textit{CVPR}. (Paper gốc về YOLOv1).
+	\item[5] Liu, W., Anguelov, D., Erhan, D., Szegedy, C., Reed, S., Fu, C. Y., \& Berg, A. C. (2016). Ssd: Single shot multibox detector. In \textit{ECCV}. (Paper gốc về SSD).
+	\item[6] Lin, T. Y., Goyal, P., Girshick, R., He, K., \& Dollár, P. (2017). Focal loss for dense object detection. In \textit{ICCV}. (Paper gốc về RetinaNet và Focal Loss).
+	\item[7] Carion, N., Massa, F., Synnaeve, G., Usunier, N., Kirillov, A., \& Zagoruyko, S. (2020). End-to-end object detection with transformers. In \textit{ECCV}. (Paper gốc về DETR).
+	\item[8] Jocher, G., Chaurasia, A., \& Qiu, J. (2023). YOLO by Ultralytics. \textit{https://github.com/ultralytics/yolov5}. (Một trong những phiên bản YOLO hiện đại, phổ biến).
+	\item[9] Cheng, T., et al. (2024). YOLO-World: Real-Time Open-Vocabulary Object Detection. \textit{arXiv preprint arXiv:2401.17270}. (Paper gốc về YOLO-World).
+\end{itemize}

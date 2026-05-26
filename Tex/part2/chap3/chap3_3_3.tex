@@ -1,3 +1,191 @@
-% part2 - chap3 - Section 3.3
-\section*{Section 3.3}
+\section{Các Framework Phục vụ Chuyên dụng}
+\label{sec:serving_frameworks}
 
+FastAPI với Docker là điểm khởi đầu tốt và hoàn toàn đủ cho nhiều dự án quy mô vừa. Nhưng khi yêu cầu về hiệu suất và độ phức tạp tăng lên---phục vụ hàng nghìn yêu cầu mỗi giây, quản lý nhiều mô hình đồng thời, tận dụng tối đa GPU với dynamic batching---thì cần đến các framework phục vụ được thiết kế chuyên biệt cho học máy. Phần này giới thiệu hai lựa chọn hàng đầu trong hệ sinh thái Python.
+
+\subsection{NVIDIA Triton Inference Server}
+\label{subsec:triton}
+
+NVIDIA Triton Inference Server là một platform phục vụ mô hình mã nguồn mở được thiết kế để tối đa hóa hiệu suất GPU trong môi trường sản xuất. Điểm khác biệt cốt lõi so với một API server thông thường là Triton tự động quản lý ba bài toán khó: \textbf{dynamic batching} (gom nhóm nhiều yêu cầu đến gần cùng lúc thành một batch để GPU xử lý song song), \textbf{model concurrency} (chạy nhiều instance của cùng một mô hình song song trên các GPU cores khác nhau), và \textbf{multi-model serving} (phục vụ hàng chục mô hình khác nhau trên cùng một server với một scheduler thống nhất).
+
+Triton sử dụng khái niệm \textit{model repository}---một thư mục theo cấu trúc định sẵn nơi mỗi mô hình có thư mục riêng với file cấu hình và các phiên bản:
+
+\begin{minted}[breaklines=true, fontsize=\small]{text}
+model_repository/
++-- resnet50/
+    +-- config.pbtxt          <- file cấu hình mô hình
+    +-- 1/                    <- phiên bản 1
+        +-- model.onnx        <- file mô hình
+\end{minted}
+
+File \texttt{config.pbtxt} khai báo metadata của mô hình, định nghĩa shape của input/output, giới hạn batch size, và chiến lược dynamic batching:
+
+\begin{minted}[breaklines=true, fontsize=\small]{text}
+name: "resnet50"
+platform: "onnxruntime_onnx"
+max_batch_size: 64
+input [
+  {
+    name: "input"
+    data_type: TYPE_FP32
+    dims: [ 3, 224, 224 ]
+  }
+]
+output [
+  {
+    name: "output"
+    data_type: TYPE_FP32
+    dims: [ 1000 ]
+  }
+]
+dynamic_batching {
+  preferred_batch_size: [ 8, 16, 32 ]
+  max_queue_delay_microseconds: 100
+}
+instance_group [
+  {
+    count: 2
+    kind: KIND_GPU
+  }
+]
+\end{minted}
+
+Cấu hình \texttt{dynamic\_batching} trên cho Triton biết: ưu tiên gom thành batch 8, 16, hoặc 32, và sẵn sàng đợi tối đa 100 micro giây để gom đủ batch. \texttt{instance\_group} yêu cầu 2 instance chạy song song trên GPU, giúp tận dụng tốt hơn khi có nhiều yêu cầu đến cùng lúc.
+
+Khởi động Triton bằng Docker:
+
+\begin{minted}[breaklines=true, fontsize=\small]{bash}
+docker run --gpus=1 --rm \
+    -p 8000:8000 \
+    -p 8001:8001 \
+    -p 8002:8002 \
+    -v /path/to/model_repository:/models \
+    nvcr.io/nvidia/tritonserver:24.01-py3 \
+    tritonserver --model-repository=/models
+\end{minted}
+
+Triton mở ba port: 8000 cho HTTP REST, 8001 cho gRPC (nhanh hơn cho dữ liệu lớn), và 8002 cho metrics Prometheus. Giao tiếp với Triton từ Python thông qua client library chính thức:
+
+\begin{minted}[breaklines=true, fontsize=\small]{python}
+import tritonclient.http as httpclient
+import numpy as np
+
+# Kết nối đến Triton server
+client = httpclient.InferenceServerClient("localhost:8000")
+
+# Kiểm tra trạng thái server và model
+assert client.is_server_live()
+assert client.is_model_ready("resnet50")
+
+# Chuẩn bị dữ liệu đầu vào
+input_data = np.random.randn(1, 3, 224, 224).astype(np.float32)
+inputs = [httpclient.InferInput("input", [1, 3, 224, 224], "FP32")]
+inputs[0].set_data_from_numpy(input_data)
+
+# Khai báo output cần lấy về
+outputs = [httpclient.InferRequestedOutput("output")]
+
+# Gửi yêu cầu suy luận
+response = client.infer("resnet50", inputs, outputs=outputs)
+result = response.as_numpy("output")
+print(f"Output shape: {result.shape}")  # (1, 1000)
+\end{minted}
+
+\subsection{BentoML}
+\label{subsec:bentoml}
+
+BentoML theo đuổi triết lý khác với Triton: thay vì tối ưu hóa tầng hạ tầng, BentoML tập trung vào trải nghiệm của nhà phát triển---giúp việc đóng gói, phiên bản hóa, và triển khai mô hình trở nên đơn giản và tự nhiên như nhất có thể.
+
+Workflow của BentoML xoay quanh hai khái niệm: \textit{Model Store} (kho lưu trữ mô hình có phiên bản) và \textit{Service} (định nghĩa logic phục vụ). Đầu tiên, lưu mô hình vào store của BentoML với metadata về cách gọi:
+
+\begin{minted}[breaklines=true, fontsize=\small]{python}
+import bentoml
+import torch
+from bentoml.io import Image, JSON
+from PIL import Image as PILImage
+import torchvision.transforms as transforms
+
+# Lưu mô hình vào BentoML store với thông tin về batching
+bentoml.pytorch.save_model(
+    "resnet50",
+    model,
+    signatures={
+        "__call__": {
+            "batchable": True,
+            "batch_dim": 0,  # chiều batch là chiều 0
+        }
+    },
+)
+\end{minted}
+
+Tiếp theo, định nghĩa Service---class mô tả logic nhận yêu cầu, tiền xử lý, gọi mô hình, và trả kết quả:
+
+\begin{minted}[breaklines=true, fontsize=\small]{python}
+# Lấy runner từ mô hình đã lưu
+resnet_runner = bentoml.pytorch.get("resnet50:latest").to_runner()
+
+# Định nghĩa service với runner
+svc = bentoml.Service("cv_classifier", runners=[resnet_runner])
+
+transform = transforms.Compose([
+    transforms.Resize((224, 224)),
+    transforms.ToTensor(),
+    transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225]),
+])
+class_names = ["cat", "dog", "bird"]
+
+
+@svc.api(input=Image(), output=JSON())
+async def classify(input_image: PILImage.Image) -> dict:
+    """API endpoint nhận ảnh PIL và trả về kết quả phân loại."""
+    # Tiền xử lý
+    tensor = transform(input_image).unsqueeze(0)
+
+    # Gọi runner bất đồng bộ (cho phép nhiều yêu cầu song song)
+    output = await resnet_runner.async_run(tensor)
+    probs = torch.softmax(output[0], dim=0)
+
+    pred_idx = probs.argmax().item()
+    return {
+        "class": class_names[pred_idx],
+        "confidence": float(probs[pred_idx]),
+    }
+\end{minted}
+
+Sau khi có service definition, BentoML cung cấp workflow để build, phục vụ, và container hóa:
+
+\begin{minted}[breaklines=true, fontsize=\small]{bash}
+# Build Bento (đóng gói service + model + dependencies)
+bentoml build
+
+# Phục vụ cục bộ để kiểm tra
+bentoml serve cv_classifier:latest --port 3000
+
+# Đóng gói thành Docker image một lệnh
+bentoml containerize cv_classifier:latest
+
+# Kết quả: một Docker image sẵn sàng triển khai
+docker run -p 3000:3000 cv_classifier:<tag>
+\end{minted}
+
+\begin{mdframed}[style=infobox]
+\textbf{So sánh Triton vs BentoML vs FastAPI thuần:}
+
+\begin{center}
+\begin{tabular}{lccc}
+\hline
+\textbf{Tiêu chí} & \textbf{FastAPI} & \textbf{BentoML} & \textbf{Triton} \\
+\hline
+Độ khó setup       & Thấp     & Trung bình & Cao        \\
+Hiệu suất GPU      & Trung bình & Cao       & Rất cao    \\
+Dynamic batching   & Thủ công  & Tự động    & Tự động    \\
+Multi-framework    & Không     & Có         & Có         \\
+Hỗ trợ gRPC        & Không     & Có         & Có         \\
+Metrics tích hợp   & Không     & Có         & Có         \\
+Phù hợp cho        & Prototype & Startup    & Enterprise \\
+\hline
+\end{tabular}
+\end{center}
+
+Nguyên tắc chọn lựa: bắt đầu với FastAPI khi cần nhanh và linh hoạt, chuyển sang BentoML khi cần quản lý nhiều mô hình và phiên bản, và đầu tư vào Triton khi hiệu suất GPU và throughput là ưu tiên hàng đầu ở quy mô lớn.
+\end{mdframed}

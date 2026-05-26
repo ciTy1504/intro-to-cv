@@ -1,3 +1,205 @@
-% part2 - chap2 - Section 2.3
-\section*{Section 2.3}
+\section{Kỹ thuật Đánh giá Thực tế}
+\label{sec:evaluation}
 
+Huấn luyện mô hình mà không có đánh giá đúng đắn giống như lái xe ban đêm mà không bật đèn pha. Bạn có thể đang đi đúng hướng, nhưng cũng có thể đang tiến thẳng vào vách đá. Đánh giá không chỉ là đo accuracy trên tập test---đó là quá trình hiểu sâu điểm mạnh, điểm yếu và các failure mode của mô hình để đưa ra quyết định kỹ thuật đúng đắn: có nên thu thập thêm dữ liệu, điều chỉnh kiến trúc, hay thay đổi hàm mất mát?
+
+\subsection{Xây dựng vòng lặp đánh giá (evaluation loop)}
+\label{subsec:eval_loop}
+
+Một vòng lặp đánh giá hoàn chỉnh cần tính toán nhiều chỉ số cùng lúc để có bức tranh toàn diện. Thư viện \texttt{torchmetrics} cung cấp các implemention chuẩn, hiệu quả và tương thích với GPU cho tất cả các chỉ số phổ biến:
+
+\begin{minted}[breaklines=true, fontsize=\small]{python}
+import torch
+from torchmetrics import Accuracy, Precision, Recall, F1Score
+from tqdm import tqdm
+
+def evaluate(model, dataloader, device, num_classes):
+    model.eval()
+
+    # Khởi tạo tất cả metrics -- chạy trực tiếp trên GPU
+    metrics = {
+        "accuracy":  Accuracy(task="multiclass",
+                              num_classes=num_classes).to(device),
+        "precision": Precision(task="multiclass",
+                               num_classes=num_classes,
+                               average="macro").to(device),
+        "recall":    Recall(task="multiclass",
+                            num_classes=num_classes,
+                            average="macro").to(device),
+        "f1":        F1Score(task="multiclass",
+                             num_classes=num_classes,
+                             average="macro").to(device),
+    }
+
+    with torch.no_grad():
+        for images, labels in tqdm(dataloader, desc="Evaluating"):
+            images, labels = images.to(device), labels.to(device)
+            outputs = model(images)
+            preds = outputs.argmax(dim=1)
+            # Cập nhật từng metric với batch hiện tại
+            for metric in metrics.values():
+                metric.update(preds, labels)
+
+    # Tổng hợp kết quả sau khi duyệt hết dataset
+    results = {
+        name: metric.compute().item()
+        for name, metric in metrics.items()
+    }
+    # Reset để dùng lại trong epoch tiếp theo
+    for metric in metrics.values():
+        metric.reset()
+
+    return results
+
+results = evaluate(model, val_loader, device, num_classes=10)
+print(f"Accuracy:  {results['accuracy']:.4f}")
+print(f"Precision: {results['precision']:.4f}")
+print(f"Recall:    {results['recall']:.4f}")
+print(f"F1 Score:  {results['f1']:.4f}")
+\end{minted}
+
+Tại sao dùng \texttt{macro} average? Khi các lớp có số lượng mẫu không cân bằng, \texttt{macro} tính trung bình đơn giản qua tất cả các lớp---mỗi lớp có trọng số bằng nhau---nên nó phản ánh hiệu suất trên cả lớp hiếm lẫn lớp phổ biến. Ngược lại, \texttt{weighted} average sẽ bị kéo lệch bởi các lớp có nhiều mẫu.
+
+\vspace{0.5em}
+\textbf{Đánh giá mô hình phát hiện đối tượng} đòi hỏi chỉ số chuyên biệt. mAP (mean Average Precision) là chỉ số chuẩn trong phát hiện đối tượng, đánh giá cả độ chính xác dự đoán lẫn chất lượng bounding box:
+
+\begin{minted}[breaklines=true, fontsize=\small]{python}
+from torchmetrics.detection.mean_ap import MeanAveragePrecision
+
+metric = MeanAveragePrecision(iou_type="bbox")
+
+# Định dạng dự đoán: danh sách dict, mỗi ảnh một dict
+preds = [
+    {
+        "boxes":  torch.tensor([[10, 20, 100, 200]], dtype=torch.float),
+        "scores": torch.tensor([0.92]),
+        "labels": torch.tensor([0]),
+    }
+]
+# Định dạng ground truth tương tự nhưng không có scores
+target = [
+    {
+        "boxes":  torch.tensor([[12, 22, 98, 198]], dtype=torch.float),
+        "labels": torch.tensor([0]),
+    }
+]
+
+metric.update(preds, target)
+result = metric.compute()
+
+print(f"mAP@50:    {result['map_50']:.4f}")   # IoU threshold = 0.50
+print(f"mAP@75:    {result['map_75']:.4f}")   # IoU threshold = 0.75
+print(f"mAP@50-95: {result['map']:.4f}")      # Trung bình tại 10 IoU thresholds
+\end{minted}
+
+mAP@50--95 là chỉ số khó hơn và được dùng trong các benchmark chuẩn như COCO. Nó yêu cầu bounding box phải khớp chặt chẽ hơn nhiều so với mAP@50.
+
+\subsection{Trực quan hóa kết quả}
+\label{subsec:visualization}
+
+Số liệu định lượng chỉ là một phần của câu chuyện. Trực quan hóa giúp phát hiện các pattern lỗi mà số liệu tổng hợp che giấu---ví dụ mô hình liên tục nhầm lẫn giữa hai lớp cụ thể, hay chỉ thất bại trên một tập con ảnh có điều kiện ánh sáng đặc biệt.
+
+\textbf{Ma trận nhầm lẫn (Confusion Matrix)} là công cụ chẩn đoán quan trọng nhất cho bài toán phân loại:
+
+\begin{minted}[breaklines=true, fontsize=\small]{python}
+import matplotlib.pyplot as plt
+import seaborn as sns
+from sklearn.metrics import confusion_matrix
+import numpy as np
+
+def plot_confusion_matrix(y_true, y_pred, class_names):
+    cm = confusion_matrix(y_true, y_pred)
+    # Chuẩn hóa theo hàng: mỗi ô là tỷ lệ trong class thực tế
+    cm_normalized = cm.astype(float) / cm.sum(axis=1)[:, np.newaxis]
+
+    fig, ax = plt.subplots(figsize=(10, 8))
+    sns.heatmap(
+        cm_normalized,
+        annot=True,
+        fmt=".2f",
+        cmap="Blues",
+        xticklabels=class_names,
+        yticklabels=class_names,
+        ax=ax
+    )
+    ax.set_ylabel("True Label")
+    ax.set_xlabel("Predicted Label")
+    ax.set_title("Normalized Confusion Matrix")
+    plt.tight_layout()
+    plt.savefig("confusion_matrix.png", dpi=150)
+    plt.close()
+    return cm_normalized
+
+# Ví dụ sử dụng
+class_names = [f"class_{i}" for i in range(10)]
+plot_confusion_matrix(all_labels, all_predictions, class_names)
+\end{minted}
+
+\textbf{Vẽ bounding box cho phát hiện đối tượng} giúp kiểm tra trực quan chất lượng dự đoán trên từng ảnh cụ thể:
+
+\begin{minted}[breaklines=true, fontsize=\small]{python}
+import cv2
+import numpy as np
+
+def draw_detections(image, boxes, labels, scores, class_names,
+                    threshold=0.5):
+    """
+    image: numpy array (H, W, 3) định dạng BGR
+    boxes: list of [x1, y1, x2, y2]
+    labels: list of class indices
+    scores: list of confidence scores
+    """
+    # Tạo màu ngẫu nhiên cho mỗi lớp
+    np.random.seed(42)
+    colors = {i: tuple(np.random.randint(0, 255, 3).tolist())
+              for i in range(len(class_names))}
+
+    for box, label, score in zip(boxes, labels, scores):
+        if score < threshold:
+            continue
+        x1, y1, x2, y2 = map(int, box)
+        color = colors[label]
+
+        # Vẽ bounding box
+        cv2.rectangle(image, (x1, y1), (x2, y2), color, thickness=2)
+
+        # Vẽ nhãn và điểm tin cậy
+        text = f"{class_names[label]}: {score:.2f}"
+        (text_w, text_h), _ = cv2.getTextSize(
+            text, cv2.FONT_HERSHEY_SIMPLEX, 0.5, 1)
+        # Nền cho text để dễ đọc hơn
+        cv2.rectangle(image, (x1, y1 - text_h - 4),
+                      (x1 + text_w, y1), color, -1)
+        cv2.putText(image, text, (x1, y1 - 4),
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 1)
+    return image
+\end{minted}
+
+\textbf{Overlay mask cho phân đoạn ngữ nghĩa} cho phép kiểm tra ranh giới phân đoạn trên ảnh gốc:
+
+\begin{minted}[breaklines=true, fontsize=\small]{python}
+def overlay_mask(image, mask, alpha=0.5, color=(0, 255, 0)):
+    """
+    Chồng mask lên ảnh gốc với độ trong suốt alpha.
+    image: numpy array (H, W, 3)
+    mask:  numpy array (H, W) -- giá trị > 0 là vùng đối tượng
+    """
+    colored_mask = np.zeros_like(image)
+    colored_mask[mask > 0] = color
+
+    # Blending: kết hợp ảnh gốc và mask có màu
+    result = cv2.addWeighted(image, 1.0, colored_mask, alpha, 0)
+    return result
+
+def overlay_multi_class_mask(image, mask, num_classes, alpha=0.5):
+    """Mỗi lớp một màu khác nhau."""
+    np.random.seed(0)
+    palette = np.random.randint(0, 255, (num_classes, 3))
+    colored = palette[mask]          # (H, W, 3) -- map class id -> color
+    result = cv2.addWeighted(
+        image.astype(np.uint8), 1 - alpha,
+        colored.astype(np.uint8), alpha, 0)
+    return result
+\end{minted}
+
+Những công cụ trực quan hóa này không chỉ hữu ích khi phân tích lỗi mà còn cần thiết khi trình bày kết quả cho stakeholder---số liệu 0.934 mAP ít thuyết phục hơn nhiều so với việc hiển thị trực tiếp mô hình đang hoạt động tốt trên các ảnh thực tế của dự án.

@@ -1,3 +1,156 @@
-% part2 - chap4 - Section 4.4
-\section*{Section 4.4}
+\section{Recipe 4: Tạo ảnh nghệ thuật từ văn bản với Stable Diffusion}
+\label{sec:recipe_stable_diffusion}
 
+Stable Diffusion là mô hình sinh ảnh từ văn bản (text-to-image) mạnh mẽ và mã nguồn mở. Không giống các API đóng, bạn có thể chạy nó hoàn toàn cục bộ trên GPU của mình. Recipe này hướng dẫn ba kịch bản sử dụng: sinh ảnh từ văn bản, biến đổi ảnh có sẵn, và kiểm soát chính xác bố cục với ControlNet.
+
+\subsection{Bước 1: Sinh ảnh từ văn bản (Text-to-Image)}
+\label{subsec:sd_text2img}
+
+Thư viện \texttt{diffusers} của Hugging Face là cách dễ nhất để sử dụng Stable Diffusion. Pipeline encapsulate toàn bộ quá trình: mã hóa text prompt, khử nhiễu latent, và giải mã thành ảnh.
+
+\begin{minted}[breaklines=true, fontsize=\small]{python}
+from diffusers import StableDiffusionPipeline, DPMSolverMultistepScheduler
+import torch
+
+model_id = "stabilityai/stable-diffusion-2-1"
+
+# Tai pipeline voi float16 de giam VRAM (can ~5GB VRAM)
+pipe = StableDiffusionPipeline.from_pretrained(
+    model_id,
+    torch_dtype=torch.float16
+)
+
+# Thay scheduler mac dinh bang DPM-Solver++: nhanh hon, chat luong tuong duong
+pipe.scheduler = DPMSolverMultistepScheduler.from_config(pipe.scheduler.config)
+pipe = pipe.to("cuda")
+
+# Kich hoat attention slicing: giam VRAM them ~1GB, cham hon mot chut
+pipe.enable_attention_slicing()
+
+# Sinh anh
+image = pipe(
+    prompt="a photorealistic image of a cat wearing a wizard hat, "
+           "dramatic lighting, 4k, highly detailed",
+    negative_prompt="blurry, low quality, distorted, watermark, cartoon",
+    num_inference_steps=25,    # Nhieu buoc = chat luong cao hon, nhung cham hon
+    guidance_scale=7.5,        # CFG scale: cao = bam sat prompt, thap = sang tao hon
+    height=512,
+    width=512,
+    generator=torch.Generator("cuda").manual_seed(42),  # Ket qua tai hien duoc
+).images[0]
+
+image.save("wizard_cat.png")
+print("Da luu anh tai wizard_cat.png")
+\end{minted}
+
+\begin{mdframed}[style=infobox]
+\textbf{Nghệ thuật viết prompt hiệu quả}
+
+Prompt tốt thường có cấu trúc: \textit{[chủ thể]} + \textit{[phong cách]} + \textit{[ánh sáng/màu sắc]} + \textit{[từ khóa chất lượng]}.
+
+\textbf{Ví dụ:} \textit{"portrait of a Vietnamese woman, traditional ao dai, golden hour lighting, oil painting, highly detailed, artstation"}.
+
+\textbf{Negative prompt} quan trọng không kém: \textit{"blurry, low quality, distorted, extra fingers, watermark, text, bad anatomy"}.
+
+Một số từ khóa tăng chất lượng phổ biến: \texttt{4k}, \texttt{highly detailed}, \texttt{photorealistic}, \texttt{masterpiece}, \texttt{trending on artstation}, \texttt{sharp focus}. Ngược lại, \texttt{guidance\_scale} thấp (5--6) cho ảnh sáng tạo hơn nhưng ít bám prompt; cao (8--12) bám prompt nhưng đôi khi cứng nhắc.
+\end{mdframed}
+
+\subsection{Bước 2: Image-to-Image (Img2Img)}
+\label{subsec:sd_img2img}
+
+Img2Img cho phép bạn bắt đầu từ một ảnh có sẵn (sketch, ảnh chụp) và biến đổi nó theo phong cách mới thông qua prompt. Tham số \texttt{strength} kiểm soát mức độ biến đổi: 0 giữ nguyên hoàn toàn ảnh gốc, 1 bỏ qua hoàn toàn.
+
+\begin{minted}[breaklines=true, fontsize=\small]{python}
+from diffusers import StableDiffusionImg2ImgPipeline
+from PIL import Image
+
+img2img_pipe = StableDiffusionImg2ImgPipeline.from_pretrained(
+    model_id,
+    torch_dtype=torch.float16
+)
+img2img_pipe = img2img_pipe.to("cuda")
+
+# Anh dau vao: co the la sketch, anh thuc, hoac anh thu cong
+init_image = Image.open("sketch.jpg").resize((512, 512))
+
+result = img2img_pipe(
+    prompt="a beautiful oil painting of a mountain landscape, "
+           "warm colors, impressionist style",
+    image=init_image,
+    strength=0.75,          # 0.0 = giu nguyen anh goc, 1.0 = sinh hoan toan moi
+    guidance_scale=7.5,
+    num_inference_steps=30,
+).images[0]
+
+result.save("mountain_painting.png")
+\end{minted}
+
+\subsection{Bước 3: ControlNet --- Kiểm soát bố cục chính xác}
+\label{subsec:sd_controlnet}
+
+ControlNet cho phép điều khiển cấu trúc của ảnh được sinh ra thông qua một "ảnh điều kiện" (condition image): cạnh Canny, skeleton người, bản đồ chiều sâu, v.v. Đây là công cụ mạnh khi bạn cần giữ nguyên bố cục nhưng thay đổi phong cách.
+
+\begin{minted}[breaklines=true, fontsize=\small]{python}
+import cv2
+import numpy as np
+from diffusers import ControlNetModel, StableDiffusionControlNetPipeline
+from PIL import Image
+
+def get_canny_edges(image_path, low_threshold=100, high_threshold=200):
+    """Trich xuat canh Canny tu anh de dung lam dieu kien ControlNet."""
+    image = cv2.imread(image_path)
+    image_gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+    edges = cv2.Canny(image_gray, low_threshold, high_threshold)
+    # Chuyen ve anh RGB 3 kenh
+    edges_rgb = np.stack([edges, edges, edges], axis=-1)
+    return Image.fromarray(edges_rgb)
+
+# Tai ControlNet pretrained cho Canny edges
+controlnet = ControlNetModel.from_pretrained(
+    "lllyasviel/sd-controlnet-canny",
+    torch_dtype=torch.float16
+)
+
+pipe = StableDiffusionControlNetPipeline.from_pretrained(
+    "runwayml/stable-diffusion-v1-5",
+    controlnet=controlnet,
+    torch_dtype=torch.float16,
+)
+pipe = pipe.to("cuda")
+pipe.enable_attention_slicing()
+
+# Lay ban do canh tu anh nguon
+source_image = "architecture.jpg"
+canny_image = get_canny_edges(source_image)
+
+# Sinh anh moi giu nguyen cau truc cua anh nguon
+result = pipe(
+    prompt="a watercolor painting of a building, soft colors, artistic",
+    image=canny_image,          # ControlNet dieu kien
+    num_inference_steps=20,
+    guidance_scale=7.5,
+).images[0]
+
+result.save("controlled_result.png")
+\end{minted}
+
+\subsection{Các mô hình Stable Diffusion phổ biến}
+\label{subsec:sd_models_table}
+
+\begin{table}[h]
+\centering
+\caption{Một số mô hình Stable Diffusion phổ biến và trường hợp sử dụng}
+\label{tab:sd_models}
+\begin{tabular}{lp{7cm}}
+\hline
+\textbf{Mô hình} & \textbf{Điểm mạnh và usecase} \\
+\hline
+SD v2.1            & Mục đích chung, ảnh thực, phong cảnh \\
+SD XL (SDXL)       & Độ phân giải cao (1024px), chi tiết tốt hơn \\
+SDXL-Turbo         & Sinh ảnh 1--4 bước, real-time interactive \\
+Realistic Vision   & Ảnh chân thực, portrait, ảnh chụp \\
+DreamShaper        & Kết hợp nghệ thuật và thực tế, linh hoạt \\
+Deliberate         & Nghệ thuật chi tiết, nhân vật, concept art \\
+\hline
+\end{tabular}
+\end{table}

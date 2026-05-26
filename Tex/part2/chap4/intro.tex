@@ -1,3 +1,32 @@
-% part2 - chap4 introduction
-\chapter*{Chapter 4 Introduction}
+\chapter{CÔNG THỨC XÂY DỰNG CÁC ỨNG DỤNG PHỔ BIẾN (RECIPES)}
+\label{chap:p2_recipes}
 
+Có một ranh giới thú vị giữa việc \textit{hiểu} thị giác máy tính và việc \textit{xây dựng} với nó. Bạn có thể hiểu rõ cơ chế self-attention của Vision Transformer, nắm vững toán học đằng sau hàm mất mát Dice trong phân đoạn, hay phân tích được sơ đồ kiến trúc của Stable Diffusion --- nhưng khi ngồi trước màn hình trắng và bắt đầu gõ dòng code đầu tiên cho một ứng dụng thực tế, bạn thường gặp phải một câu hỏi hoàn toàn khác: \textit{Bắt đầu từ đâu?}
+
+Chương này ra đời để trả lời đúng câu hỏi đó. Thay vì trình bày thêm lý thuyết, chúng ta sẽ tiếp cận theo một mô hình khác: \textbf{công thức nấu ăn (recipes)}. Mỗi recipe là một hướng dẫn từng bước, đầy đủ và có thể chạy được ngay, để xây dựng một loại ứng dụng thị giác cụ thể. Giống như một người đầu bếp có thể theo công thức để tạo ra một món ăn ngon mà không cần hiểu sâu về hóa học thực phẩm, bạn có thể theo các recipe này để tạo ra các hệ thống hoạt động tốt ngay cả khi chưa thành thạo mọi chi tiết kỹ thuật bên trong.
+
+Điều phân biệt một recipe tốt với một đoạn code ngẫu nhiên là \textbf{tính toàn diện của pipeline}. Mỗi recipe trong chương này bao gồm toàn bộ hành trình từ đầu đến cuối: từ cách tổ chức và chuẩn bị dữ liệu, chọn mô hình phù hợp, viết vòng lặp huấn luyện, đánh giá hiệu suất, cho đến hàm suy luận cuối cùng có thể tích hợp vào sản phẩm thực tế. Không có bước nào bị bỏ qua với lý do "để bạn đọc tự hoàn thiện".
+
+Tám recipe được chọn lọc trong chương này bao trùm những ứng dụng phổ biến và có giá trị thực tế cao nhất hiện nay:
+
+\begin{itemize}
+    \item \textbf{Recipe 1 --- Phân loại ảnh:} Xây dựng hệ thống phân loại chó/mèo với transfer learning từ ResNet-50, đầy đủ từ \texttt{ImageFolder} đến early stopping và hàm suy luận.
+
+    \item \textbf{Recipe 2 --- Phát hiện vật thể:} Pipeline huấn luyện và triển khai YOLOv8 trên dataset tùy chỉnh, bao gồm suy luận ảnh tĩnh, webcam thời gian thực và xuất ONNX.
+
+    \item \textbf{Recipe 3 --- Phân đoạn ảnh:} Ba cách tiếp cận: phân đoạn ngữ nghĩa với SegFormer, phân đoạn phiên bản với SAM, và huấn luyện U-Net tùy chỉnh với \texttt{segmentation-models-pytorch}.
+
+    \item \textbf{Recipe 4 --- Sinh ảnh từ văn bản:} Tạo ảnh nghệ thuật với Stable Diffusion, image-to-image transformation, và kiểm soát chính xác với ControlNet.
+
+    \item \textbf{Recipe 5 --- Ứng dụng webcam thời gian thực:} Kết hợp phát hiện vật thể và phân loại cảnh trong một pipeline tối ưu hóa cho độ trễ thấp với luồng xử lý song song.
+
+    \item \textbf{Recipe 6 --- Visual Chatbot:} Chatbot có khả năng "nhìn" và mô tả ảnh sử dụng LLaVA hoặc Claude API, với giao diện Gradio đầy đủ.
+
+    \item \textbf{Recipe 7 --- Tìm kiếm đa phương thức với CLIP:} Hệ thống tìm kiếm ảnh bằng văn bản hoặc ảnh tương tự, sử dụng FAISS để index và truy vấn hiệu quả trên bộ sưu tập lớn.
+
+    \item \textbf{Recipe 8 --- Trợ lý thị giác (Vision Assistant):} Xây dựng trợ lý AI có bộ nhớ hội thoại và khả năng phân tích ảnh nhiều lượt dựa trên các mô hình ngôn ngữ-thị giác lớn (LVLM).
+\end{itemize}
+
+Mỗi recipe được thiết kế để hoạt động độc lập. Bạn không cần đọc tuần tự từ đầu đến cuối; hãy đến thẳng recipe bạn cần và bắt tay vào làm. Tuy nhiên, nếu đây là lần đầu bạn xây dựng các ứng dụng thị giác, Recipe 1 và Recipe 2 là điểm khởi đầu lý tưởng vì chúng xây dựng nền tảng kỹ thuật mà các recipe sau sẽ tái sử dụng.
+
+Triết lý của chương này đơn giản: \textbf{học bằng cách làm}. Lý thuyết tốt nhất là lý thuyết bạn hiểu được vì bạn đã tự tay xây dựng thứ gì đó với nó.

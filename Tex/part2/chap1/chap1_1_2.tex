@@ -1,3 +1,281 @@
-% part2 - chap1 - Section 1.2
-\section*{Section 1.2}
+\section{Kỹ thuật Thu thập và Gán nhãn Dữ liệu}
+\label{sec:data_collection_labeling}
 
+Thu thập dữ liệu không phải là việc đơn giản chỉ là tải về một bộ dataset rồi dùng ngay. Đây là một quy trình đòi hỏi sự cân nhắc kỹ lưỡng về tính đại diện, đa dạng và chất lượng của dữ liệu. Phần này khám phá ba con đường chính để có được dữ liệu cho dự án CV: tận dụng các bộ dữ liệu công khai sẵn có, thu thập ảnh tự động từ web, và sau đó gán nhãn dữ liệu đó bằng các công cụ chuyên dụng.
+
+\subsection{Tìm kiếm và sử dụng các bộ dữ liệu công khai}
+\label{subsec:public_datasets}
+
+Trước khi nghĩ đến việc thu thập dữ liệu mới, câu hỏi đầu tiên luôn phải là: \textit{Liệu đã có bộ dữ liệu công khai nào phù hợp chưa?} Cộng đồng nghiên cứu đã dày công xây dựng và duy trì hàng trăm bộ dữ liệu chất lượng cao, được gán nhãn cẩn thận và có thể sử dụng miễn phí hoặc với ít hạn chế. Tận dụng những tài nguyên này giúp tiết kiệm đáng kể thời gian và chi phí.
+
+Một số bộ dữ liệu tiêu chuẩn trong cộng đồng CV:
+
+\begin{itemize}
+    \item \textbf{ImageNet (ILSVRC):} Hơn 14 triệu ảnh thuộc 1.000 lớp đối tượng. Đây là bộ dữ liệu benchmark quan trọng nhất cho bài toán phân loại ảnh và là nguồn pretrain của hầu hết các kiến trúc hiện đại.
+
+    \item \textbf{COCO (Common Objects in Context):} Hơn 330.000 ảnh với 1,5 triệu instance được gán nhãn cho 80 loại đối tượng. Hỗ trợ phát hiện đối tượng, phân đoạn instance, và ước lượng tư thế người. Đây là benchmark chuẩn cho detection và segmentation.
+
+    \item \textbf{Pascal VOC:} Bộ dữ liệu phát hiện đối tượng kinh điển với 20 lớp. Mặc dù nhỏ hơn COCO, VOC vẫn được sử dụng rộng rãi làm benchmark và điểm so sánh lịch sử.
+
+    \item \textbf{Open Images:} Bộ dữ liệu khổng lồ của Google với hơn 9 triệu ảnh và 600 lớp đối tượng. Cung cấp cả bounding box lẫn segmentation mask.
+
+    \item \textbf{Kinetics:} Bộ dữ liệu video hành động người gồm hàng trăm nghìn clip YouTube với hơn 400--700 lớp hành động. Dành cho bài toán nhận dạng hành động trong video.
+\end{itemize}
+
+\subsubsection{Tải dữ liệu với FiftyOne}
+
+FiftyOne là công cụ quản lý và trực quan hóa dataset mạnh mẽ, tích hợp trực tiếp với nhiều bộ dữ liệu chuẩn. Đoạn code sau tải 100 mẫu từ tập validation của COCO-2017:
+
+\begin{minted}[breaklines=true, fontsize=\small]{python}
+import fiftyone as fo
+import fiftyone.zoo as foz
+
+# Tai 100 mau tu tap validation cua COCO-2017
+# FiftyOne tu dong xu ly viec tai ve va chuyen doi dinh dang
+dataset = foz.load_zoo_dataset(
+    "coco-2017",
+    split="validation",
+    max_samples=100,
+    label_types=["detections"],  # chi tai bounding box annotations
+)
+
+# In thong ke tong quan
+print(dataset)
+print(f"So luong mau: {len(dataset)}")
+
+# Xem thong tin mot mau
+sample = dataset.first()
+print(sample)
+
+# Khoi dong giao dien truc quan hoa trong browser
+# session = fo.launch_app(dataset)
+\end{minted}
+
+\subsubsection{Tải dữ liệu với Hugging Face Datasets}
+
+Hugging Face cung cấp một API thống nhất để truy cập hàng nghìn bộ dữ liệu. Đặc biệt hữu ích là chế độ \texttt{streaming=True} cho phép duyệt qua dataset lớn mà không cần tải toàn bộ về disk:
+
+\begin{minted}[breaklines=true, fontsize=\small]{python}
+from datasets import load_dataset
+
+# Tai ImageNet-1k o che do streaming de khong can download toan bo
+dataset = load_dataset("imagenet-1k", split="train", streaming=True)
+
+# Lay 5 mau dau tien de khao sat
+for i, sample in enumerate(dataset.take(5)):
+    print(f"Sample {i}: label={sample['label']}, "
+          f"image_size={sample['image'].size}")
+
+# Tai mot dataset nho hon (Food-101) ve hoan toan
+food_dataset = load_dataset("food101", split="train[:1000]")
+print(f"Food-101 train size: {len(food_dataset)}")
+print(f"Columns: {food_dataset.column_names}")
+\end{minted}
+
+\begin{mdframed}[style=infobox]
+    \textbf{Lưu ý khi dùng dữ liệu công khai}
+
+    Không phải bộ dữ liệu công khai nào cũng phù hợp cho mọi mục đích. Trước khi sử dụng, cần kiểm tra:
+    \begin{itemize}
+        \item \textbf{Giấy phép:} Một số dataset chỉ cho phép dùng cho nghiên cứu, không cho mục đích thương mại (ví dụ: ImageNet yêu cầu đăng ký và có giới hạn thương mại).
+        \item \textbf{Phân phối dữ liệu:} Dataset có thể có sự chênh lệch về địa lý, văn hóa hoặc nhân khẩu học không phù hợp với bài toán của bạn.
+        \item \textbf{Chất lượng nhãn:} Ngay cả các dataset nổi tiếng cũng có tỷ lệ nhãn sai nhất định. COCO, ví dụ, có khoảng 3--5\% annotation có vấn đề.
+    \end{itemize}
+\end{mdframed}
+
+\subsection{Web Scraping ảnh}
+\label{subsec:web_scraping}
+
+Khi không có sẵn bộ dữ liệu công khai phù hợp, thu thập ảnh tự động từ web là lựa chọn phổ biến. Tuy nhiên, cần tiếp cận việc này một cách có trách nhiệm.
+
+\begin{mdframed}[style=infobox]
+    \textbf{Cân nhắc đạo đức khi thu thập ảnh từ web}
+
+    Trước khi scrape bất kỳ nguồn nào, cần lưu ý:
+    \begin{itemize}
+        \item \textbf{Kiểm tra \texttt{robots.txt}:} File này cho biết website có cho phép bot thu thập hay không. Tôn trọng quy định của từng trang web.
+        \item \textbf{Giấy phép ảnh:} Ảnh trên internet thường có bản quyền. Chỉ sử dụng ảnh có giấy phép Creative Commons hoặc được phép sử dụng cho mục đích nghiên cứu.
+        \item \textbf{Thông tin cá nhân:} Tránh thu thập ảnh có khuôn mặt người mà không có sự đồng ý, đặc biệt trong bối cảnh GDPR và các quy định về quyền riêng tư ngày càng chặt chẽ.
+        \item \textbf{Giới hạn tốc độ:} Không gửi quá nhiều request liên tiếp---điều này có thể gây quá tải server và bị block IP.
+    \end{itemize}
+\end{mdframed}
+
+\subsubsection{Thu thập ảnh với icrawler}
+
+\texttt{icrawler} là thư viện Python giúp tự động tải ảnh từ các công cụ tìm kiếm. Ví dụ sau thu thập 500 ảnh chó Golden Retriever từ Google Images:
+
+\begin{minted}[breaklines=true, fontsize=\small]{python}
+from icrawler.builtin import GoogleImageCrawler
+from icrawler.builtin import BingImageCrawler
+import os
+
+# Tao thu muc luu tru
+os.makedirs("data/raw/dogs", exist_ok=True)
+
+# Khoi tao crawler cho Google Images
+crawler = GoogleImageCrawler(
+    feeder_threads=1,
+    parser_threads=2,
+    downloader_threads=4,
+    storage={"root_dir": "data/raw/dogs"}
+)
+
+# Bat dau thu thap
+crawler.crawl(
+    keyword="golden retriever dog",
+    max_num=500,
+    min_size=(200, 200),    # Loc anh qua nho
+    max_size=None,
+    file_idx_offset=0
+)
+
+# Co the dung Bing thay the neu Google bi gioi han
+bing_crawler = BingImageCrawler(
+    storage={"root_dir": "data/raw/dogs_bing"}
+)
+bing_crawler.crawl(keyword="golden retriever", max_num=200)
+\end{minted}
+
+\subsubsection{Loại bỏ ảnh trùng lặp bằng Perceptual Hashing}
+
+Khi thu thập ảnh từ web, trùng lặp là vấn đề thường xuyên gặp phải---cùng một ảnh xuất hiện trên nhiều nguồn khác nhau. Perceptual hashing (pHash) là kỹ thuật tạo ra "dấu vân tay" của ảnh dựa trên nội dung trực quan, cho phép phát hiện ảnh trùng lặp ngay cả khi chúng có kích thước khác nhau hoặc đã bị nén lại:
+
+\begin{minted}[breaklines=true, fontsize=\small]{python}
+from PIL import Image
+import imagehash
+from pathlib import Path
+
+def deduplicate_images(input_dir: str, threshold: int = 8) -> dict:
+    """
+    Loai bo anh trung lap bang perceptual hashing.
+
+    Args:
+        input_dir: Thu muc chua anh can kiem tra
+        threshold: Nguong Hamming distance (0 = giong het,
+                   cao hon = cho phep khac biet nho)
+
+    Returns:
+        Dictionary {hash: duong dan anh giu lai}
+    """
+    unique_hashes = {}
+    duplicates = []
+
+    image_paths = list(Path(input_dir).glob("*.jpg"))
+    image_paths += list(Path(input_dir).glob("*.png"))
+
+    print(f"Dang xu ly {len(image_paths)} anh...")
+
+    for img_path in image_paths:
+        try:
+            img = Image.open(img_path)
+            # phash: can bang tot giua toc do va do chinh xac
+            h = imagehash.phash(img)
+
+            # Kiem tra xem co hash nao gan giong khong
+            is_duplicate = False
+            for existing_hash in unique_hashes:
+                if h - existing_hash <= threshold:
+                    duplicates.append(img_path)
+                    is_duplicate = True
+                    break
+
+            if not is_duplicate:
+                unique_hashes[h] = img_path
+
+        except Exception as e:
+            print(f"Loi khi xu ly {img_path}: {e}")
+
+    print(f"Giu lai: {len(unique_hashes)} anh")
+    print(f"Loai bo: {len(duplicates)} anh trung lap")
+    return unique_hashes
+
+# Su dung
+unique_images = deduplicate_images("data/raw/dogs", threshold=8)
+\end{minted}
+
+\subsection{Các công cụ gán nhãn: LabelImg, CVAT, Labelbox}
+\label{subsec:labeling_tools}
+
+Sau khi có dữ liệu thô, bước tiếp theo là gán nhãn. Lựa chọn công cụ phù hợp phụ thuộc vào quy mô dự án, ngân sách và loại annotation cần thực hiện.
+
+\subsubsection{So sánh các công cụ gán nhãn}
+
+\begin{center}
+\begin{tabular}{|p{2.5cm}|p{2.8cm}|p{3.5cm}|p{4cm}|}
+\hline
+\textbf{Công cụ} & \textbf{Triển khai} & \textbf{Tính năng} & \textbf{Phù hợp cho} \\
+\hline
+LabelImg & Local, miễn phí & Bounding box, phân loại ảnh; giao diện đơn giản & Dự án nhỏ, cá nhân, bắt đầu nhanh \\
+\hline
+CVAT & Self-hosted (Docker), miễn phí & Bounding box, polygon, polyline, keypoint, video tracking & Nhóm nhỏ đến trung bình, cần nhiều loại annotation \\
+\hline
+Labelbox & Cloud (SaaS), có phí & Quản lý đội ngũ, QA tích hợp, AI-assisted labeling & Doanh nghiệp, dự án quy mô lớn \\
+\hline
+Roboflow & Cloud, freemium & Dataset management, augmentation tích hợp, export đa định dạng & Dự án vừa, cần pipeline end-to-end \\
+\hline
+\end{tabular}
+\end{center}
+
+\subsubsection{Cài đặt và sử dụng LabelImg}
+
+LabelImg là công cụ đơn giản nhất để gán nhãn bounding box, lưu kết quả ở định dạng PASCAL VOC (XML) hoặc YOLO (TXT):
+
+\begin{minted}[breaklines=true, fontsize=\small]{bash}
+# Cai dat LabelImg
+pip install labelImg
+
+# Khoi dong voi thu muc anh va file danh sach nhan
+labelImg data/raw/ data/classes.txt
+
+# Cac phim tat quan trong trong LabelImg:
+# W        - Tao bounding box moi
+# D        - Anh ke tiep
+# A        - Anh truoc do
+# Ctrl+S   - Luu annotation
+# Del      - Xoa bounding box dang chon
+\end{minted}
+
+File \texttt{data/classes.txt} chứa danh sách nhãn, mỗi nhãn một dòng:
+
+\begin{minted}[breaklines=true, fontsize=\small]{text}
+cat
+dog
+bird
+person
+car
+\end{minted}
+
+\subsubsection{Cài đặt CVAT bằng Docker}
+
+CVAT (Computer Vision Annotation Tool) của Intel là lựa chọn mạnh mẽ hơn nhiều, hỗ trợ làm việc nhóm và nhiều loại annotation phức tạp:
+
+\begin{minted}[breaklines=true, fontsize=\small]{bash}
+# Clone repository va khoi dong bang Docker Compose
+git clone https://github.com/opencv/cvat
+cd cvat
+
+# Khoi dong tat ca services
+docker compose up -d
+
+# Tao tai khoan admin lan dau
+docker exec -it cvat_server \
+    python manage.py createsuperuser
+
+# Truy cap giao dien web tai: http://localhost:8080
+\end{minted}
+
+CVAT hỗ trợ export annotation ra nhiều định dạng: COCO JSON, PASCAL VOC XML, YOLO TXT, và nhiều định dạng khác, giúp dễ dàng tích hợp với các framework huấn luyện khác nhau.
+
+\begin{mdframed}[style=infobox]
+    \textbf{Mẹo để đảm bảo chất lượng gán nhãn}
+
+    \begin{itemize}
+        \item \textbf{Viết hướng dẫn gán nhãn chi tiết} trước khi bắt đầu. Hướng dẫn cần bao gồm ví dụ cụ thể về các trường hợp khó: đối tượng bị che khuất một phần, đối tượng ở biên ảnh, khi nào thì gán nhãn và khi nào thì bỏ qua.
+
+        \item \textbf{Thực hiện vòng gán nhãn thử} với 50--100 ảnh đầu tiên. So sánh kết quả giữa các người gán nhãn để phát hiện bất đồng và điều chỉnh hướng dẫn trước khi gán nhãn toàn bộ.
+
+        \item \textbf{Đo inter-annotator agreement:} Cho khoảng 5--10\% ảnh được gán nhãn bởi nhiều người độc lập để tính IoU trung bình. IoU $\geq 0.85$ giữa các annotator thường được coi là đạt yêu cầu.
+
+        \item \textbf{Xem xét lại định kỳ:} Sau mỗi 500--1000 ảnh, lấy mẫu ngẫu nhiên để kiểm tra chất lượng và phát hiện sự trôi dạt trong cách gán nhãn theo thời gian.
+    \end{itemize}
+\end{mdframed}

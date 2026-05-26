@@ -1,0 +1,86 @@
+\section{Mô hình Nền tảng Đa phương thức và Năng lực Zero-shot}
+\label{sec:multimodal_foundation_models}
+
+\subsection{Tổng quan: Hướng tới một Mô hình cho Mọi Tác vụ}
+\label{subsec:mfm_overview}
+Trong các phần trước, chúng ta đã chứng kiến sự ra đời của CLIP và các LVLMs, những mô hình đã phá vỡ rào cản giữa thị giác và ngôn ngữ. Những thành công này không phải là những nỗ lực riêng lẻ; chúng là những biểu hiện đầu tiên của một xu hướng lớn hơn, một mô thức đang định hình lại toàn bộ lĩnh vực AI: sự trỗi dậy của các \textbf{Mô hình Nền tảng Đa phương thức (Multimodal Foundation Models)}.
+
+\textbf{Định nghĩa:} Một mô hình nền tảng đa phương thức là một mô hình AI quy mô lớn, được huấn luyện trước (pre-trained) trên một lượng dữ liệu khổng lồ bao gồm nhiều loại (modalities) khác nhau—phổ biến nhất là hình ảnh và văn bản, nhưng cũng có thể bao gồm video, âm thanh, giọng nói, v.v. Mục tiêu của nó không phải là để giải quyết một tác vụ cụ thể, mà là để học một \textbf{không gian biểu diễn chung (joint representation space)} và một "mô hình thế giới" (world model) nội tại, từ đó có thể được điều chỉnh hoặc "prompt" để giải quyết vô số các tác vụ xuôi dòng (downstream tasks) một cách \textbf{zero-shot} hoặc \textbf{few-shot}.
+
+Thay vì phải xây dựng các mô hình chuyên biệt cho phân loại, phát hiện, phân đoạn, hay tạo chú thích, ý tưởng là sử dụng một mô hình nền tảng duy nhất như một "xương sống" nhận thức phổ quát.
+
+\subsection{Nền tảng Kiến trúc và Phương pháp Huấn luyện}
+\label{subsec:mfm_architecture_training}
+Việc xây dựng các mô hình này đòi hỏi sự kết hợp của ba thành phần chính: kiến trúc linh hoạt, dữ liệu quy mô web, và các mục tiêu huấn luyện tự giám sát mạnh mẽ.
+
+\begin{description}
+	\item[Kiến trúc Thống nhất:] Kiến trúc \textbf{Transformer} là chìa khóa. Khả năng xử lý các chuỗi token một cách chung chung của nó cho phép các nhà nghiên cứu xây dựng các bộ mã hóa (encoders) và giải mã (decoders) có thể xử lý đồng thời các token hình ảnh (từ ViT), token văn bản, và các loại token khác trong cùng một khung làm việc.
+	
+	\item[Dữ liệu Quy mô Web:] Các mô hình này được "nuôi dưỡng" bằng các bộ dữ liệu có quy mô chưa từng có, thường được thu thập tự động từ internet, ví dụ như LAION-5B với 5 tỷ cặp (ảnh, văn bản).
+	
+	\item[Mục tiêu Huấn luyện:] Các phương pháp học tự giám sát là nền tảng.
+	\begin{itemize}
+		\item \textbf{Học Tương phản (Contrastive Learning):} Như trong CLIP, mục tiêu là học cách "đối chiếu" (align) các biểu diễn của các phương thức khác nhau. Mô hình học cách kéo embedding của một ảnh lại gần embedding của chú thích tương ứng và đẩy nó ra xa các chú thích khác.
+		\item \textbf{Mô hình hóa Che giấu (Masked Modeling):} Lấy cảm hứng từ BERT và MAE, một phần của đầu vào (có thể là các patch ảnh hoặc các từ trong văn bản) bị che đi, và mô hình phải dự đoán phần bị thiếu dựa trên bối cảnh từ cả hai phương thức. Các mô hình như \textbf{Kosmos-2} sử dụng cách tiếp cận này.
+		\item \textbf{Mục tiêu Lai (Hybrid Objectives):} Nhiều mô hình hiện đại kết hợp cả hai phương pháp trên để học được các biểu diễn vừa có tính phân biệt (từ học tương phản), vừa giàu ngữ nghĩa theo ngữ cảnh (từ học che giấu).
+	\end{itemize}
+\end{description}
+
+\subsection{Sức mạnh của Năng lực Zero-shot}
+\label{subsec:zero_shot_capability}
+Thành tựu đỉnh cao của các mô hình nền tảng đa phương thức là khả năng \textbf{tổng quát hóa zero-shot}. Vì đã học được mối liên kết sâu sắc giữa các khái niệm thị giác và các mô tả ngôn ngữ, chúng có thể giải quyết các tác vụ hoàn toàn mới mà không cần bất kỳ ví dụ huấn luyện nào cho tác vụ đó.
+
+\textbf{Cách hoạt động:} Năng lực này thường được kích hoạt thông qua \textbf{prompting}. Thay vì huấn luyện lại mô hình, chúng ta "ra lệnh" cho nó bằng ngôn-ngữ-tự-nhiên.
+\begin{itemize}
+	\item \textbf{Phân loại Zero-shot:} Như đã thấy với CLIP, chúng ta có thể cung cấp một danh sách các lớp dưới dạng văn bản và yêu cầu mô hình chọn lớp phù hợp nhất cho một bức ảnh.
+	\item \textbf{Phát hiện Vật thể Zero-shot (Open-Vocabulary Detection):} Các mô hình như \textbf{Grounding DINO} có thể nhận một prompt văn bản (ví dụ: "a red car next to a bicycle") và định vị các đối tượng đó trong ảnh, ngay cả khi "bicycle" không có trong tập huấn luyện phát hiện vật thể ban đầu.
+	\item \textbf{Phân đoạn Ảnh Zero-shot:} \textbf{Segment Anything Model (SAM)} có thể được kết hợp với các mô hình nhận dạng (như Grounding DINO) để tạo ra các hệ thống có thể "phân đoạn bất cứ thứ gì được mô tả bằng văn bản".
+\end{itemize}
+
+\begin{center}
+	\includegraphics[width=1.0\textwidth]{images/grounding_dino_example.png}
+	\captionof{figure}{Ví dụ về phát hiện vật thể zero-shot với Grounding DINO. Mô hình nhận đầu vào là một ảnh và một prompt văn bản ("a cat and a dog"). Nó có thể định vị chính xác các đối tượng được mô tả mà không cần được huấn luyện chuyên biệt cho các lớp "cake" hay "dog".}
+	\label{fig:grounding_dino_example}
+\end{center}
+% Keyword gợi ý: grounding dino example, open-vocabulary object detection
+
+\subsection{Ưu điểm và Hạn chế}
+\label{subsec:mfm_pros_cons}
+
+\subsubsection{Ưu điểm}
+\label{subsubsec:mfm_advantages}
+\begin{itemize}
+	\item \textbf{Giảm thiểu nhu cầu Gán nhãn:} Đây là lợi ích lớn nhất. Các mô hình nền tảng giảm đáng kể hoặc loại bỏ hoàn toàn nhu cầu về các bộ dữ liệu được gán nhãn chuyên biệt cho từng tác vụ, giúp tiết kiệm chi phí và thời gian khổng lồ.
+	\item \textbf{Tính linh hoạt và Tốc độ Triển khai:} Một mô hình nền tảng duy nhất có thể được sử dụng nhanh chóng cho hàng chục ứng dụng khác nhau chỉ bằng cách thay đổi prompt, thay vì phải huấn luyện và triển khai hàng chục mô hình riêng lẻ.
+	\item \textbf{Hiệu năng Vượt trội:} Nhờ được học trên dữ liệu quy mô lớn, các biểu diễn từ các mô hình này thường mạnh mẽ và có khả năng tổng quát hóa tốt hơn nhiều so với các mô hình được huấn luyện trên các bộ dữ liệu nhỏ hơn.
+\end{itemize}
+
+\subsubsection{Hạn chế}
+\label{subsubsec:mfm_disadvantages}
+\begin{itemize}
+	\item \textbf{Yêu cầu Tài nguyên Khổng lồ:} Việc huấn luyện các mô hình này đòi hỏi một lượng tài nguyên tính toán (hàng nghìn GPU/TPU trong nhiều tuần) và dữ liệu (hàng tỷ mẫu) mà chỉ có một vài tập đoàn công nghệ lớn có thể tiếp cận.
+	\item \textbf{Thiên vị và An toàn:} Các mô hình được huấn luyện trên dữ liệu internet không được kiểm soát có thể học và tái tạo lại các thiên vị, thông tin sai lệch, và nội dung độc hại có trong dữ liệu đó.
+	\item \textbf{Khó khăn trong Lý luận Chi tiết (Fine-grained Reasoning):} Mặc dù xuất sắc ở các khái niệm chung, các mô hình này đôi khi vẫn gặp khó khăn trong các tác vụ đòi hỏi sự chính xác chi tiết, như đếm số lượng đối tượng nhỏ hoặc đọc các văn bản bị biến dạng trong ảnh.
+\end{itemize}
+
+\subsection{Kết luận: Hướng tới một Nền tảng AI Thống nhất}
+\label{subsec:mfm_conclusion}
+Các mô hình nền tảng đa phương thức, cùng với năng lực zero-shot của chúng, đang định hình lại "xương sống" của AI thị giác hiện đại. Chúng đại diện cho một sự chuyển dịch từ việc xây dựng các "công cụ" chuyên biệt sang việc xây dựng các "bộ não" nhận thức tổng quát.
+
+Xu hướng trong giai đoạn 2024–2025 và xa hơn là rõ ràng:
+\begin{itemize}
+	\item \textbf{Mở rộng các Phương thức:} Các mô hình sẽ ngày càng tích hợp nhiều loại dữ liệu hơn, từ ảnh, video, văn bản, đến âm thanh, 3D, và thậm chí là các tín hiệu từ robot.
+	\item \textbf{Tăng cường Khả năng Lý luận:} Các thế hệ tiếp theo sẽ không chỉ mô tả, mà còn có khả năng suy luận nhân quả, lập kế hoạch, và thực hiện các chuỗi hành động phức tạp dựa trên đầu vào đa phương thức.
+	\item \textbf{Một Pipeline Thống nhất:} Tương lai sẽ chứng kiến sự hội tụ của các tác vụ. Một mô hình duy nhất sẽ có khả năng thực hiện đồng thời việc phát hiện, phân đoạn, tạo chú thích, và trả lời câu hỏi, tạo ra một hệ thống nhận thức toàn diện.
+\end{itemize}
+Các mô hình nền tảng đang biến tầm nhìn về một AI tổng quát, linh hoạt và có khả năng học hỏi liên tục trở nên gần hơn bao giờ hết, mở đường cho một thế hệ ứng dụng thông minh và tương tác thực sự.
+
+\section*{Tài liệu tham khảo}
+\begin{itemize}
+	\item[1] Radford, A., Kim, J. W., Hallacy, C., Ramesh, A., Goh, G., Agarwal, S., ... \& Sutskever, I. (2021). Learning transferable visual models from natural language supervision. In \textit{International Conference on Machine Learning (ICML)}. (Paper gốc về CLIP, mô hình nền tảng đa phương thức tiên phong).
+	\item[2] Liu, S., et al. (2023). Grounding DINO: Marrying DINO with Grounded Pre-Training for Open-Set Object Detection. \textit{arXiv preprint arXiv:2303.05499}. (Giới thiệu Grounding DINO, một ví dụ điển hình về phát hiện vật thể zero-shot).
+	\item[3] Kirillov, A., Mintun, E., Ravi, N., Tou, H., Caron, M., ... \& Girshick, R. (2023). Segment anything. \textit{arXiv preprint arXiv:2304.02643}. (Giới thiệu SAM, một mô hình nền tảng cho phân đoạn có thể được điều khiển bằng prompt).
+	\item[4] Liu, H., Li, C., Wu, Q., \& Lee, Y. J. (2023). Visual instruction tuning. In \textit{Advances in Neural Information Processing Systems (NeurIPS)}. (Giới thiệu LLaVA, một LVLM mã nguồn mở có ảnh hưởng lớn).
+	\item[5] Microsoft. (2023). \textit{Kosmos-2: Grounding Multimodal Large Language Models to the World}. Microsoft Research Blog. (Giới thiệu Kosmos-2, một mô hình nền tảng tập trung vào "grounding" các khái niệm ngôn ngữ vào thế giới thị giác).
+	\item[6] Bommasani, R., et al. (2021). On the opportunities and risks of foundation models. \textit{arXiv preprint arXiv:2108.07258}. (Một bài báo tổng quan toàn diện về khái niệm, cơ hội và thách thức của các mô hình nền tảng).
+\end{itemize}

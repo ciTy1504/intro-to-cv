@@ -1,31 +1,22 @@
-\chapter{Học Biểu diễn và Kỷ nguyên Dữ liệu}
-\label{chap:representation_learning}
-%----------------------------------------------------------------------------------------
-%	INTRODUCTION
-%----------------------------------------------------------------------------------------
+\chapter{Các Bài toán Thị giác Cốt lõi \& Kiến trúc Chuyên biệt}
+\label{chap:core_vision_tasks}
 
-Trong suốt hành trình đã qua, chúng ta đã chứng kiến sự trỗi dậy của những kiến trúc hùng mạnh, từ CNN đến Transformer, có khả năng đạt được hiệu năng siêu phàm trên các bài toán thị giác. Tuy nhiên, đằng sau những thành công đó luôn có một người hùng thầm lặng nhưng không thể thiếu: các bộ dữ liệu được gán nhãn cẩn thận và quy mô lớn. ImageNet, với hơn một triệu ảnh được gán nhãn thủ công, chính là "nhiên liệu" đã đốt cháy cuộc cách mạng học sâu.
+Chúng ta đã dành hai chương vừa qua để rèn giũa những "con mắt" kỹ thuật số vô cùng mạnh mẽ. Từ các khối tích chập hiệu quả của CNN đến khả năng lý luận toàn cục của Transformer, chúng ta đã xây dựng nên những kiến trúc "xương sống" (backbone) có khả năng chưng cất một bức ảnh thô thành một biểu diễn đặc trưng (feature representation) giàu ngữ nghĩa. Nhưng thị giác không chỉ dừng lại ở việc nhận biết. Đỉnh cao của sự thấu hiểu thị giác không phải là để trả lời câu hỏi "Trong ảnh này có một con mèo phải không?", mà là để trả lời những câu hỏi sâu sắc và chi tiết hơn rất nhiều: \textit{"Con mèo đó đang ở đâu trong ảnh?"}, \textit{"Hình dạng chính xác của nó là gì?"}, \textit{"Các bộ phận cơ thể của nó được sắp xếp ra sao?"}, và \textit{"Nó đang di chuyển như thế nào?"}.
 
-Mô thức \textit{học có giám sát (supervised learning)} này—học từ các cặp (ảnh, nhãn)—đã thống trị lĩnh vực trong một thời gian dài. Nhưng nó cũng bộc lộ một "gót chân Achilles": sự phụ thuộc vào dữ liệu có nhãn. Trong thế giới thực, 99\% dữ liệu thị giác là không có nhãn. Internet chứa hàng tỷ bức ảnh và video, nhưng việc gán nhãn cho chúng ở quy mô này là một công việc bất khả thi. Sự khan hiếm của dữ liệu có nhãn đã trở thành "cổ chai" lớn nhất kìm hãm sự phát triển của AI.
+Đây chính là sứ mệnh của chương này. Chúng ta sẽ chuyển từ việc xây dựng các "động cơ" thị giác có mục đích chung sang việc thiết kế những "cỗ máy" chuyên dụng, được tinh chỉnh để giải quyết các bài toán thị giác cốt lõi. Nếu một mạng phân loại ảnh giống như một nhà chẩn đoán tổng quát, thì các kiến trúc mà chúng ta sắp tìm hiểu giống như những bác sĩ phẫu thuật chuyên khoa: chúng không chỉ nhận diện vấn đề, mà còn phải định vị, khoanh vùng và phân tích nó với độ chính xác cực cao.
 
-Chương này sẽ đưa chúng ta vào một cuộc cách mạng thứ hai, một sự thay đổi mô thức sâu sắc về cách chúng ta huấn luyện các mô hình. Điều gì sẽ xảy ra nếu chúng ta có thể dạy một cỗ máy "nhìn" mà không cần phải nói cho nó biết tên của mọi thứ? Điều gì sẽ xảy ra nếu bản thân dữ liệu, trong dạng thô, hỗn loạn và không có nhãn của nó, lại ẩn chứa đủ tín hiệu để một mô hình có thể tự học được "ngữ pháp" của thế giới thị giác?
-
-Đây chính là kỷ nguyên của \textbf{Học Biểu diễn (Representation Learning)} và \textbf{AI Lấy Dữ liệu làm Trung tâm (Data-centric AI)}. Thay vì tập trung vào việc thiết kế một kiến trúc chỉ để giải quyết một tác vụ cụ thể, mục tiêu giờ đây là học một \textit{biểu diễn} (representation) nội tại, phong phú và tổng quát về dữ liệu. Một biểu diễn tốt sẽ giống như một "bộ não thị giác" đa năng, có thể được tái sử dụng và tinh chỉnh một cách dễ dàng cho vô số các tác vụ khác nhau.
-
-Trong chương này, chúng ta sẽ khám phá những ý tưởng đột phá đã giải phóng AI khỏi sự phụ thuộc vào nhãn:
+Chương này sẽ đưa chúng ta vào trung tâm của các ứng dụng thị giác máy tính hiện đại, nơi các biểu diễn trừu tượng được biến thành các kết quả đầu ra có cấu trúc và có thể hành động. Chúng ta sẽ khám phá cách các kiến trúc xương sống được điều chỉnh và mở rộng với các "đầu" (heads) chuyên biệt để giải phẫu một khung cảnh thị giác:
 
 \begin{itemize}
-	\item \textbf{Học Tự giám sát (Self-Supervised Learning - SSL):} Đây là nghệ thuật tạo ra các "bài toán giả" (pretext tasks) để mô hình có thể tự học từ dữ liệu không nhãn. Chúng ta sẽ khám phá hai trường phái chính: các phương pháp \textit{tương phản} dạy mô hình biết "cái gì giống cái gì", và các phương pháp \textit{che giấu} (masking) thách thức mô hình "đoán phần còn thiếu".
+	\item \textbf{Phát hiện Vật thể (Object Detection):} Vượt qua giới hạn của một nhãn duy nhất, chúng ta sẽ học cách huấn luyện các mô hình để không chỉ nhận diện mà còn \textit{định vị} nhiều đối tượng trong một ảnh. Từ các kiến trúc kinh điển dựa trên CNN như YOLO và Faster R-CNN, đến các phương pháp hiện đại dựa trên Transformer như DETR, chúng ta sẽ tìm hiểu cách vẽ nên những "khung hộp" (bounding boxes) chính xác xung quanh mọi vật thể.
 	
-	\item \textbf{Học sâu Đo lường (Deep Metric Learning):} Vượt ra ngoài việc học đặc trưng, chúng ta sẽ tìm hiểu cách tổ chức không gian đặc trưng sao cho các đối tượng tương tự được kéo lại gần nhau và các đối tượng khác biệt bị đẩy ra xa, một nguyên lý cốt lõi cho các hệ thống tìm kiếm ảnh.
+	\item \textbf{Phân đoạn Ảnh (Image Segmentation):} Chúng ta sẽ tiến một bước xa hơn về độ chi tiết, từ những chiếc hộp vuông vức đến việc tô màu cho từng pixel. Phân đoạn ảnh trả lời câu hỏi về hình dạng chính xác của vật thể. Chúng ta sẽ khám phá các kiến trúc mã hóa-giải mã (encoder-decoder) thanh lịch như U-Net, các mô hình phân đoạn tức thời (instance segmentation) như Mask R-CNN, và tất nhiên, cuộc cách mạng gần đây mang tên \textit{Segment Anything Model (SAM)}.
 	
-	\item \textbf{AI Lấy Dữ liệu làm Trung tâm (Data-centric AI):} Một sự thay đổi triết lý quan trọng: thay vì chỉ tập trung vào việc tinh chỉnh mô hình, chúng ta sẽ khám phá tầm quan trọng của việc cải thiện, làm sạch và làm giàu chính bộ dữ liệu.
+	\item \textbf{Các Bài toán khác về Con người và Chuyển động:} Thị giác không chỉ là về các vật thể tĩnh. Chúng ta sẽ tìm hiểu về các bài toán phức tạp hơn như \textbf{Ước tính Tư thế (Pose Estimation)}—tìm ra "bộ xương" của con người hay vật thể—và \textbf{Theo dõi Đối tượng (Object Tracking)}, bài toán thêm vào chiều thời gian để trả lời câu hỏi "Đối tượng này đã đi đâu?".
 	
-	\item \textbf{Học với Ít dữ liệu hơn (Zero-shot \& Few-shot Learning):} Một khi đã có một biểu diễn mạnh mẽ, liệu chúng ta có thể dạy mô hình nhận ra một khái niệm mới chỉ với một vài ví dụ, hoặc thậm chí không cần ví dụ nào, chỉ bằng cách mô tả nó bằng ngôn ngữ?
+	\item \textbf{Thách thức của Thế giới Thực:} Các mô hình hoạt động tốt trong phòng thí nghiệm có thể thất bại thảm hại khi triển khai trong thực tế. Chúng ta sẽ thảo luận về một vấn đề cốt lõi: \textbf{Thích ứng và Tổng quát hóa Miền (Domain Adaptation \& Generalization)}, tức là làm thế nào để một mô hình được huấn luyện trên dữ liệu mùa hè vẫn có thể hoạt động tốt vào mùa đông.
 	
-	\item \textbf{Học Liên tục (Continual Learning):} Trong thế giới thực, dữ liệu luôn thay đổi. Chúng ta sẽ tìm hiểu thách thức trong việc dạy mô hình học các khái niệm mới mà không "quên" đi những gì nó đã biết.
-	
-	\item \textbf{Các Mô hình Nền tảng như những Cỗ máy Học Biểu diễn:} Cuối cùng, chúng ta sẽ chứng kiến sự hội tụ của tất cả các ý tưởng trên trong các mô hình nền tảng khổng lồ như \textbf{DINOv2}, \textbf{OpenCLIP}, và \textbf{I-JEPA}. Đây không còn là các mô hình cho một tác vụ, mà là các hệ thống cung cấp các biểu diễn "có sẵn" (off-the-shelf), mạnh mẽ cho gần như mọi bài toán thị giác.
+	\item \textbf{Kỷ nguyên của các Mô hình Nền tảng:} Cuối cùng, chúng ta sẽ chứng kiến sự thay đổi mô thức mới nhất, nơi các mô hình nền tảng (Foundation Models) được huấn luyện trước trên quy mô web đang dần thay thế các mô hình chuyên biệt. Các mô hình như Grounding DINO có thể được "ra lệnh" để phát hiện bất kỳ đối tượng nào chỉ bằng ngôn ngữ, mở ra một kỷ nguyên mới của thị giác có khả năng tương tác và linh hoạt.
 \end{itemize}
 
-Chào mừng bạn đến với tương lai của việc huấn luyện AI. Chương này sẽ không chỉ thay đổi cách bạn xây dựng mô hình, mà còn thay đổi cách bạn nghĩ về dữ liệu, về việc học, và về bản chất của sự "thấu hiểu" thị giác.
+Chào mừng bạn đến với tuyến đầu của thị giác ứng dụng. Trong chương này, chúng ta sẽ không chỉ "nhìn", mà sẽ bắt đầu "giải phẫu", "lý luận" và "tương tác" với thế giới thị giác một cách sâu sắc và có cấu trúc.

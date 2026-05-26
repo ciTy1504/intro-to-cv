@@ -1,3 +1,182 @@
-% part2 - chap4 - Section 4.3
-\section*{Section 4.3}
+\section{Recipe 3: Xây dựng Hệ thống Phân đoạn Ảnh}
+\label{sec:recipe_segmentation}
 
+Phân đoạn ảnh (image segmentation) tiến xa hơn detection: thay vì một hộp bao quanh vật thể, chúng ta muốn biết \textit{chính xác pixel nào} thuộc về vật thể đó. Recipe này trình bày ba cách tiếp cận theo mức độ tùy chỉnh tăng dần: dùng mô hình pretrained cho phân đoạn ngữ nghĩa, dùng SAM cho phân đoạn phiên bản tự động, và huấn luyện U-Net tùy chỉnh.
+
+\subsection{Cách tiếp cận 1: Phân đoạn ngữ nghĩa với SegFormer pretrained}
+\label{subsec:seg_segformer}
+
+Phân đoạn ngữ nghĩa (semantic segmentation) gán một nhãn lớp cho \textit{mỗi pixel} của ảnh. Không phân biệt các thực thể riêng lẻ --- tất cả xe ô tô trong ảnh đều là "xe ô tô", không phải "xe ô tô số 1" và "xe ô tô số 2".
+
+SegFormer là kiến trúc Transformer-based hiệu quả cho phân đoạn ngữ nghĩa. Phiên bản được pretrain trên ADE20K (150 lớp ngữ nghĩa phổ biến trong cảnh nội/ngoại thất) có thể dùng ngay mà không cần huấn luyện thêm.
+
+\begin{minted}[breaklines=true, fontsize=\small]{python}
+from transformers import SegformerForSemanticSegmentation, SegformerImageProcessor
+import torch
+from PIL import Image
+import numpy as np
+
+# Tai processor va model tu Hugging Face Hub
+processor = SegformerImageProcessor.from_pretrained(
+    "nvidia/segformer-b2-finetuned-ade-512-512"
+)
+model = SegformerForSemanticSegmentation.from_pretrained(
+    "nvidia/segformer-b2-finetuned-ade-512-512"
+)
+model.eval()
+
+# Chay inference
+image = Image.open("street.jpg")
+inputs = processor(images=image, return_tensors="pt")
+
+with torch.no_grad():
+    outputs = model(**inputs)
+
+# Logits co shape (1, num_labels, H/4, W/4) - SegFormer dau ra 1/4 kich thuoc
+logits = outputs.logits
+
+# Upsample ve kich thuoc anh goc
+upsampled = torch.nn.functional.interpolate(
+    logits,
+    size=image.size[::-1],   # (height, width) - image.size la (W, H)
+    mode="bilinear",
+    align_corners=False
+)
+
+# Lay nhan lop co xac suat cao nhat cho moi pixel
+predicted_mask = upsampled.argmax(dim=1)[0].numpy()
+
+print(f"Kich thuoc mask: {predicted_mask.shape}")
+print(f"Cac lop xuat hien: {np.unique(predicted_mask)}")
+\end{minted}
+
+\begin{mdframed}[style=infobox]
+\textbf{Chú ý về kích thước output của SegFormer}
+
+SegFormer xuất ra feature map với kích thước bằng 1/4 ảnh đầu vào (stride 4). Bước upsample bằng \texttt{F.interpolate} là bắt buộc để đưa mask về đúng kích thước ảnh gốc. Nếu bỏ qua bước này, mask sẽ nhỏ hơn ảnh và không thể overlay chính xác.
+\end{mdframed}
+
+\subsection{Cách tiếp cận 2: Phân đoạn phiên bản tự động với SAM}
+\label{subsec:seg_sam}
+
+Phân đoạn phiên bản (instance segmentation) phân biệt từng thực thể riêng lẻ --- mỗi con người, mỗi xe ô tô đều được tách biệt. SAM (Segment Anything Model) của Meta có thể phân đoạn \textit{bất kỳ vật thể nào} trong ảnh mà không cần định nghĩa trước nhãn lớp.
+
+\begin{minted}[breaklines=true, fontsize=\small]{python}
+from segment_anything import SamAutomaticMaskGenerator, sam_model_registry
+import cv2
+import numpy as np
+
+# Tai SAM model (can tai checkpoint tu: https://github.com/facebookresearch/segment-anything)
+sam = sam_model_registry["vit_b"](checkpoint="sam_vit_b.pth")
+sam.to("cuda")
+
+# SamAutomaticMaskGenerator: tu dong phan doan toan bo anh
+mask_generator = SamAutomaticMaskGenerator(
+    model=sam,
+    points_per_side=32,         # So diem lay mau tren moi canh (32^2 = 1024 diem)
+    pred_iou_thresh=0.86,       # Loai bo mask co IOU score thap
+    stability_score_thresh=0.92, # Loai bo mask khong on dinh
+)
+
+image = cv2.imread("image.jpg")
+image_rgb = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
+masks = mask_generator.generate(image_rgb)
+
+# Sap xep theo dien tich (lon nhat truoc)
+masks = sorted(masks, key=lambda x: x["area"], reverse=True)
+print(f"Tim thay {len(masks)} segment")
+
+# Moi mask la mot dict chua: segmentation (bool array), area, bbox, ...
+for i, mask in enumerate(masks[:5]):  # In 5 mask lon nhat
+    print(f"Mask {i}: dien tich={mask['area']}, bbox={mask['bbox']}")
+\end{minted}
+
+Để trực quan hóa kết quả, chúng ta tô màu ngẫu nhiên cho từng mask và overlay lên ảnh gốc:
+
+\begin{minted}[breaklines=true, fontsize=\small]{python}
+def show_anns(anns, image):
+    """Overlay tat ca mask len anh goc voi mau ngau nhien."""
+    if not anns:
+        return image
+    overlay = image.copy()
+    for ann in anns:
+        m = ann["segmentation"]            # Bool array, True = thuoc ve segment
+        color = np.random.randint(0, 255, 3).tolist()
+        overlay[m] = color
+    # Ket hop anh goc (40%) voi overlay (60%)
+    return cv2.addWeighted(image, 0.4, overlay, 0.6, 0)
+
+result = show_anns(masks, image_rgb)
+
+# Luu ket qua
+result_bgr = cv2.cvtColor(result, cv2.COLOR_RGB2BGR)
+cv2.imwrite("sam_result.jpg", result_bgr)
+\end{minted}
+
+\subsection{Cách tiếp cận 3: Huấn luyện U-Net tùy chỉnh}
+\label{subsec:seg_unet}
+
+Khi cần phân đoạn các lớp đặc thù của bài toán (ví dụ: khối u trong ảnh y tế, vết nứt trong kiểm tra công trình), bạn cần tự huấn luyện mô hình trên dataset nhãn tay. Thư viện \texttt{segmentation-models-pytorch} (SMP) cung cấp nhiều kiến trúc phân đoạn với encoder pretrained, rất tiện để xây dựng nhanh.
+
+\begin{minted}[breaklines=true, fontsize=\small]{python}
+import segmentation_models_pytorch as smp
+import torch
+import torch.optim as optim
+
+# U-Net voi encoder ResNet-34 duoc pretrain tren ImageNet
+model = smp.Unet(
+    encoder_name="resnet34",
+    encoder_weights="imagenet",   # Khoi dong tu ImageNet weights
+    in_channels=3,                # Anh RGB
+    classes=21,                   # Pascal VOC co 21 lop (bao gom background)
+)
+
+# Dice Loss phu hop hon Cross-Entropy cho bai toan phan doan
+# Vi no toi uu truc tiep ty le phu chua (overlap ratio)
+loss_fn = smp.losses.DiceLoss(smp.MULTICLASS_MODE, from_logits=True)
+
+optimizer = optim.Adam(model.parameters(), lr=1e-4)
+model = model.cuda()
+
+def train_step(model, images, masks, optimizer, loss_fn):
+    """
+    images: (B, 3, H, W) - tensor anh RGB
+    masks:  (B, H, W)    - tensor nhan pixel (gia tri 0..num_classes-1)
+    """
+    model.train()
+    optimizer.zero_grad()
+
+    logits = model(images)   # (B, num_classes, H, W)
+    loss = loss_fn(logits, masks)
+    loss.backward()
+    optimizer.step()
+
+    # Tinh IoU (Intersection over Union) - metric chinh cho phan doan
+    tp, fp, fn, tn = smp.metrics.get_stats(
+        logits.argmax(dim=1),
+        masks,
+        mode="multiclass",
+        num_classes=21
+    )
+    iou = smp.metrics.iou_score(tp, fp, fn, tn, reduction="micro")
+    return loss.item(), iou.item()
+
+# Vi du su dung trong vong lap huan luyen
+# for epoch in range(num_epochs):
+#     for images, masks in train_loader:
+#         images, masks = images.cuda(), masks.cuda()
+#         loss, iou = train_step(model, images, masks, optimizer, loss_fn)
+#     print(f"Epoch {epoch}: Loss={loss:.4f}, IoU={iou:.4f}")
+\end{minted}
+
+\begin{mdframed}[style=infobox]
+\textbf{Khi nào dùng cách tiếp cận nào?}
+
+\begin{itemize}
+    \item \textbf{SegFormer pretrained:} Bài toán phân đoạn cảnh tổng quát (đường phố, phòng trong nhà). Không cần dữ liệu, chạy ngay. Phù hợp cho prototype hoặc khi dataset ADE20K/Cityscapes đủ gần với usecase.
+
+    \item \textbf{SAM:} Cần phân đoạn các vật thể bất kỳ mà không biết trước danh sách lớp. Lý tưởng cho annotation tool, demo tương tác. SAM không cho biết vật thể là gì --- chỉ biết ranh giới.
+
+    \item \textbf{U-Net tùy chỉnh:} Dataset đặc thù (y tế, công nghiệp, vệ tinh) nơi các lớp pretrained không phù hợp. Cần nhãn tay nhưng cho kết quả tốt nhất cho domain cụ thể.
+\end{itemize}
+\end{mdframed}

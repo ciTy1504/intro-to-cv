@@ -1,3 +1,138 @@
-% part2 - chap1 - Section 1.1
-\section*{Section 1.1}
+\section{Phác thảo Quy trình Dự án CV Tinh gọn}
+\label{sec:cv_project_workflow}
 
+Một trong những sai lầm phổ biến nhất của người mới học thị giác máy tính là bắt đầu ngay với việc viết code---tải một mô hình pretrained, ghép nối một vài lớp, và huấn luyện trên bất kỳ dữ liệu nào có sẵn. Cách tiếp cận này có thể dẫn đến kết quả ban đầu trông có vẻ ổn, nhưng rất nhanh sẽ gặp phải tường do thiếu một kế hoạch có cấu trúc. Thực tế là những dự án CV thành công---dù ở quy mô nghiên cứu hay sản xuất---đều tuân theo một quy trình có hệ thống gồm nhiều giai đoạn liên kết chặt chẽ với nhau.
+
+Phần này trình bày một \textbf{quy trình dự án CV tinh gọn} gồm sáu giai đoạn, được đúc kết từ kinh nghiệm thực tế của cộng đồng. Đây không phải là công thức cứng nhắc, mà là một khung tư duy linh hoạt có thể điều chỉnh theo đặc thù của từng dự án.
+
+\subsection{Sáu giai đoạn của một dự án CV}
+\label{subsec:six_stages}
+
+\subsubsection{Giai đoạn 1: Định nghĩa Bài toán}
+
+Mọi dự án CV đều bắt đầu bằng câu hỏi: \textit{Chính xác ta đang cố giải quyết vấn đề gì?} Đây tưởng chừng đơn giản nhưng lại là giai đoạn bị bỏ qua nhiều nhất. Cần xác định rõ:
+
+\begin{itemize}
+    \item \textbf{Loại bài toán:} Phân loại ảnh? Phát hiện đối tượng? Phân đoạn? Ước lượng tư thế?
+    \item \textbf{Định nghĩa thành công:} Metric nào là quan trọng---accuracy, mAP, IoU, latency hay F1-score?
+    \item \textbf{Ràng buộc triển khai:} Chạy trên cloud hay edge device? Yêu cầu thời gian thực không?
+    \item \textbf{Baseline:} Giải pháp hiện tại (nếu có) đang đạt kết quả gì?
+\end{itemize}
+
+Một bản đặc tả bài toán rõ ràng sẽ quyết định mọi lựa chọn kỹ thuật ở các giai đoạn sau.
+
+\subsubsection{Giai đoạn 2: Thu thập Dữ liệu}
+
+Sau khi biết cần giải quyết gì, câu hỏi tiếp theo là: \textit{Cần dữ liệu loại nào, bao nhiêu, và lấy từ đâu?} Dữ liệu cần phải:
+
+\begin{itemize}
+    \item \textbf{Đại diện:} Bao phủ đủ các biến thể (ánh sáng, góc nhìn, điều kiện môi trường) mà mô hình sẽ gặp trong thực tế.
+    \item \textbf{Cân bằng:} Phân phối giữa các lớp không lệch quá nhiều, hoặc có chiến lược xử lý mất cân bằng.
+    \item \textbf{Chất lượng:} Ảnh rõ nét, không bị nhiễu quá mức, đúng định dạng.
+\end{itemize}
+
+\subsubsection{Giai đoạn 3: Gán nhãn Dữ liệu}
+
+Gán nhãn là giai đoạn tốn nhiều thời gian và chi phí nhất. Một số nguyên tắc quan trọng:
+
+\begin{itemize}
+    \item Xây dựng \textbf{hướng dẫn gán nhãn} (annotation guidelines) chi tiết trước khi bắt đầu.
+    \item Sử dụng \textbf{nhiều người gán nhãn} và đo \textbf{inter-annotator agreement} để đảm bảo tính nhất quán.
+    \item Chọn công cụ phù hợp với loại annotation: bounding box, polygon, keypoint hay pixel-level mask.
+\end{itemize}
+
+\subsubsection{Giai đoạn 4: Huấn luyện Mô hình}
+
+Bắt đầu bằng một baseline đơn giản, sau đó tăng dần độ phức tạp. Một số quyết định quan trọng:
+
+\begin{itemize}
+    \item \textbf{Kiến trúc:} Bắt đầu với pretrained model (transfer learning) thay vì huấn luyện từ đầu.
+    \item \textbf{Tăng cường dữ liệu:} Áp dụng augmentation phù hợp với loại bài toán.
+    \item \textbf{Hyperparameter search:} Sử dụng công cụ như Optuna hoặc W\&B Sweeps.
+\end{itemize}
+
+\subsubsection{Giai đoạn 5: Đánh giá và Phân tích Lỗi}
+
+Đánh giá không chỉ là tính metric trên tập test. Cần phải:
+
+\begin{itemize}
+    \item Phân tích \textbf{confusion matrix} để hiểu mô hình nhầm lẫn ở đâu.
+    \item Xem xét các \textbf{hard examples}---những mẫu mà mô hình liên tục dự đoán sai.
+    \item Kiểm tra \textbf{phân phối lỗi theo điều kiện} (ánh sáng tối, đối tượng nhỏ, v.v.).
+\end{itemize}
+
+\subsubsection{Giai đoạn 6: Triển khai và Giám sát}
+
+Triển khai chỉ là bước bắt đầu, không phải kết thúc. Sau triển khai cần:
+
+\begin{itemize}
+    \item \textbf{Giám sát phân phối dữ liệu} để phát hiện data drift---khi dữ liệu thực tế dần khác dữ liệu huấn luyện.
+    \item Thu thập \textbf{dữ liệu thực tế mới} để liên tục cải thiện mô hình.
+    \item Thiết lập pipeline \textbf{tái huấn luyện tự động} khi performance suy giảm.
+\end{itemize}
+
+\subsection{Tổng quan các giai đoạn}
+\label{subsec:stages_overview_table}
+
+Bảng dưới đây tóm tắt sáu giai đoạn, công cụ thường dùng và đầu ra kỳ vọng tại mỗi bước:
+
+\begin{center}
+\begin{tabular}{|p{3.2cm}|p{4.5cm}|p{5.5cm}|}
+\hline
+\textbf{Giai đoạn} & \textbf{Công cụ phổ biến} & \textbf{Đầu ra kỳ vọng} \\
+\hline
+Định nghĩa bài toán & Tài liệu, Notion, Confluence & Đặc tả kỹ thuật, định nghĩa metric \\
+\hline
+Thu thập dữ liệu & FiftyOne, icrawler, Roboflow & Tập ảnh thô, chưa gán nhãn \\
+\hline
+Gán nhãn & LabelImg, CVAT, Labelbox & Tập dữ liệu có nhãn (COCO, VOC, ...) \\
+\hline
+Huấn luyện & PyTorch, TensorFlow, Ultralytics & Checkpoint mô hình tốt nhất \\
+\hline
+Đánh giá & scikit-learn, W\&B, TensorBoard & Báo cáo metric, phân tích lỗi \\
+\hline
+Triển khai \& Giám sát & ONNX, TensorRT, Evidently & Mô hình production, dashboard giám sát \\
+\hline
+\end{tabular}
+\end{center}
+
+\begin{mdframed}[style=infobox]
+    \textbf{Sai lầm phổ biến trong dự án CV thực tế}
+
+    \begin{enumerate}
+        \item \textbf{Bỏ qua phân tích lỗi:} Nhiều người chỉ nhìn vào số metric tổng thể mà không hiểu \textit{tại sao} mô hình sai. Phân tích lỗi có hệ thống thường chỉ ra hướng cải thiện rõ ràng hơn việc tăng dữ liệu hay thay đổi kiến trúc một cách mù quáng.
+
+        \item \textbf{Tập test bị nhiễm:} Vô tình để ảnh từ cùng nguồn (cùng video, cùng địa điểm, cùng người chụp) vào cả tập train lẫn tập test. Kết quả trông rất tốt nhưng mô hình thực ra chỉ đang "nhớ" dữ liệu.
+
+        \item \textbf{Gán nhãn thiếu nhất quán:} Không có hướng dẫn gán nhãn rõ ràng dẫn đến tình trạng mỗi người gán nhãn theo một cách khác nhau, tạo ra "nhãn nhiễu" làm mô hình học sai.
+
+        \item \textbf{Quên quản lý phiên bản dữ liệu:} Dữ liệu thay đổi (thêm ảnh, sửa nhãn, lọc nhiễu) mà không được ghi chép cẩn thận, dẫn đến không thể tái tạo lại kết quả thực nghiệm cũ.
+    \end{enumerate}
+\end{mdframed}
+
+\subsection{Cấu trúc thư mục dự án chuẩn}
+\label{subsec:project_structure}
+
+Một cấu trúc thư mục nhất quán là điều kiện tiên quyết để cộng tác hiệu quả và bảo trì dài hạn. Dưới đây là cấu trúc được khuyến nghị cho một dự án CV điển hình:
+
+\begin{minted}[breaklines=true, fontsize=\small]{text}
+project/
+├── data/
+│   ├── raw/             # Dữ liệu gốc, không bao giờ bị thay đổi
+│   ├── processed/       # Dữ liệu sau tiền xử lý (resize, normalize)
+│   └── augmented/       # Dữ liệu sau augmentation offline (nếu có)
+├── notebooks/           # Jupyter notebooks cho EDA và thử nghiệm
+├── src/
+│   ├── dataset.py       # Dataset class, transforms
+│   ├── train.py         # Vòng lặp huấn luyện chính
+│   └── evaluate.py      # Logic đánh giá và phân tích lỗi
+├── models/              # Checkpoint mô hình (.pth, .onnx)
+├── configs/             # File cấu hình YAML cho thực nghiệm
+├── metrics/             # Kết quả đánh giá dưới dạng JSON
+├── logs/                # TensorBoard logs, W&B runs
+└── requirements.txt     # Danh sách dependency
+\end{minted}
+
+Nguyên tắc quan trọng nhất của cấu trúc này là \textbf{dữ liệu thô là bất biến}. Thư mục \texttt{data/raw/} một khi đã được thiết lập thì không bao giờ bị sửa đổi trực tiếp---mọi thao tác xử lý đều tạo ra file mới trong \texttt{data/processed/} hoặc \texttt{data/augmented/}. Điều này đảm bảo bạn luôn có thể quay về trạng thái ban đầu nếu cần.
+
+Thư mục \texttt{configs/} lưu trữ các file YAML mô tả đầy đủ một thực nghiệm: learning rate, batch size, kiến trúc mô hình, augmentation pipeline. Mỗi lần chạy thực nghiệm đều tham chiếu đến một file config cụ thể, giúp đảm bảo khả năng tái lập hoàn toàn.

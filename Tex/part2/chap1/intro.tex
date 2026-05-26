@@ -1,3 +1,24 @@
-% part2 - chap1 introduction
-\chapter*{Chapter 1 Introduction}
+\chapter{QUY TRÌNH LÀM VIỆC VÀ CÔNG CỤ XỬ LÝ DỮ LIỆU}
+\label{chap:p2_data_pipeline}
 
+Có một câu nói quen thuộc trong cộng đồng học máy mà bất kỳ kỹ sư thực chiến nào cũng sẽ gật đầu đồng ý: \textit{"Garbage in, garbage out."} Dù bạn có sở hữu kiến trúc mô hình tinh xảo nhất, bộ siêu tham số được tinh chỉnh công phu nhất, hay ngân sách GPU dồi dào đến đâu, tất cả đều vô nghĩa nếu dữ liệu đầu vào kém chất lượng. Trong thị giác máy tính, điều này lại càng đúng hơn bao giờ hết. Một mô hình phân loại ảnh có thể đạt độ chính xác 90\% trên tập kiểm tra nhưng thất bại hoàn toàn khi triển khai thực tế, chỉ vì dữ liệu huấn luyện không phản ánh đúng điều kiện môi trường thực tế.
+
+Dữ liệu là nền tảng của mọi dự án thị giác máy tính. Không phải mô hình, không phải thuật toán tối ưu hoá, mà là dữ liệu---số lượng, chất lượng và sự đa dạng của nó---mới là yếu tố quyết định liệu một hệ thống AI có thực sự hoạt động được hay không trong thế giới thực. Đây là lý do tại sao các công ty hàng đầu như Google, Meta, và Tesla đầu tư hàng trăm triệu đô la mỗi năm không phải vào nghiên cứu thuật toán, mà vào quy trình thu thập, làm sạch và gán nhãn dữ liệu.
+
+Thực tế của một dự án thị giác máy tính chuyên nghiệp khác xa những gì được dạy trong các khóa học trực tuyến hay sách giáo khoa thuần túy lý thuyết. Khi bước vào môi trường sản xuất thực tế, người kỹ sư sẽ đối mặt với hàng loạt thách thức không được đề cập trong các bài giảng: Làm thế nào để thu thập đủ ảnh đại diện cho mọi điều kiện ánh sáng, góc nhìn và hoàn cảnh? Ai sẽ gán nhãn hàng chục nghìn ảnh đó, và làm thế nào để đảm bảo tính nhất quán giữa những người gán nhãn khác nhau? Khi dữ liệu mới liên tục được thêm vào, làm thế nào để quản lý phiên bản và đảm bảo khả năng tái lập kết quả thực nghiệm? Và khi tập dữ liệu gốc quá nhỏ, những kỹ thuật tăng cường nào có thể giúp mô hình học tốt hơn mà không làm méo mó phân phối dữ liệu thực?
+
+Phần thực chiến này của cuốn sách ra đời để trả lời chính xác những câu hỏi đó. Sau khi đã xây dựng nền tảng lý thuyết vững chắc ở Phần 1---từ các mô hình tích chập cổ điển đến Transformer---giờ đây chúng ta sẽ chuyển sang thế giới của những dự án thực tế, nơi lý thuyết gặp gỡ thực tiễn và nơi những quyết định kỹ thuật tưởng chừng nhỏ nhặt có thể tạo ra sự khác biệt lớn trong kết quả cuối cùng.
+
+Chương mở đầu của Phần 2 này tập trung vào một trong những kỹ năng quan trọng nhất nhưng ít được dạy nhất trong chương trình đào tạo truyền thống: \textbf{xây dựng quy trình làm việc và xử lý dữ liệu}. Cụ thể, chúng ta sẽ khám phá:
+
+\begin{itemize}
+    \item \textbf{Quy trình dự án CV tinh gọn:} Một khung làm việc thực tế gồm sáu giai đoạn, từ định nghĩa bài toán đến triển khai, với những quyết định then chốt và cạm bẫy thường gặp tại mỗi bước.
+
+    \item \textbf{Thu thập và gán nhãn dữ liệu:} Các phương pháp tiếp cận các bộ dữ liệu công khai lớn như COCO và ImageNet, kỹ thuật thu thập ảnh tự động từ web, cùng với tổng quan các công cụ gán nhãn chuyên nghiệp từ LabelImg đến CVAT và Labelbox.
+
+    \item \textbf{Tiền xử lý và tăng cường dữ liệu:} Thành thạo hai thư viện xử lý ảnh cốt lõi là OpenCV và Pillow, sau đó nâng cấp lên Albumentations---thư viện tăng cường dữ liệu mạnh mẽ nhất hiện tại---với các pipeline tương thích cả phân loại, phát hiện đối tượng và phân đoạn ngữ nghĩa.
+
+    \item \textbf{Quản lý dữ liệu với DVC:} Giải quyết vấn đề phiên bản hóa dữ liệu lớn mà Git không thể xử lý, xây dựng pipeline tái lập được hoàn toàn từ dữ liệu thô đến mô hình huấn luyện.
+\end{itemize}
+
+Mục tiêu không chỉ là truyền đạt kiến thức công cụ, mà là hình thành tư duy kỹ nghệ---cách tiếp cận có hệ thống, có thể tái lập và có thể mở rộng khi làm việc với dữ liệu thị giác. Khi kết thúc chương này, bạn sẽ có đủ công cụ và kỹ năng để xây dựng từ đầu một pipeline dữ liệu hoàn chỉnh cho bất kỳ dự án thị giác máy tính nào.

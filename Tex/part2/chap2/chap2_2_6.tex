@@ -1,3 +1,172 @@
-% part2 - chap2 - Section 2.6
-\section*{Section 2.6}
+\section{Fine-tuning SOTA: LoRA, QLoRA, và Parameter-Efficient Fine-Tuning cho Vision Models}
+\label{sec:peft}
 
+Sự bùng nổ của các mô hình nền tảng (foundation models) trong thị giác máy tính---ViT-L, SAM, CLIP, DINOv2---đặt ra một nghịch lý thực tế: những mô hình này cung cấp đặc trưng ảnh tốt nhất hiện có, nhưng tinh chỉnh toàn bộ tham số của chúng đòi hỏi bộ nhớ GPU lên đến hàng chục gigabyte và thời gian tính toán khổng lồ---ngoài tầm với của đại đa số nhóm phát triển.
+
+\textbf{Parameter-Efficient Fine-Tuning (PEFT)} là tập hợp các kỹ thuật giải quyết nghịch lý này: tinh chỉnh mô hình lớn để thích nghi với bài toán cụ thể trong khi chỉ cập nhật một phần rất nhỏ tổng số tham số---thường dưới 1\%.
+
+\subsection*{LoRA: Low-Rank Adaptation}
+
+Ý tưởng cốt lõi của LoRA dựa trên quan sát rằng ma trận trọng số trong các lớp attention có \textit{intrinsic rank} thấp---nghĩa là thay đổi cần thiết khi fine-tuning có thể được xấp xỉ tốt bởi một ma trận hạng thấp. Thay vì cập nhật trực tiếp ma trận trọng số $W \in \mathbb{R}^{d \times k}$, LoRA tiêm thêm hai ma trận nhỏ hơn:
+
+$$W' = W + \Delta W = W + BA$$
+
+trong đó $B \in \mathbb{R}^{d \times r}$, $A \in \mathbb{R}^{r \times k}$, và $r \ll \min(d, k)$. Chỉ $A$ và $B$ được cập nhật trong quá trình huấn luyện; $W$ gốc được đóng băng hoàn toàn. Với $r = 16$ và $d = k = 768$ (kích thước head của ViT-Base), số tham số cần huấn luyện giảm từ $768 \times 768 = 589{,}824$ xuống $2 \times 16 \times 768 = 24{,}576$---giảm 24 lần.
+
+Thư viện \texttt{peft} của Hugging Face cung cấp implementation sẵn dùng:
+
+\begin{minted}[breaklines=true, fontsize=\small]{python}
+from peft import LoraConfig, get_peft_model, TaskType
+from transformers import ViTForImageClassification
+
+# Cấu hình LoRA
+lora_config = LoraConfig(
+    task_type=TaskType.IMAGE_CLASSIFICATION,
+    inference_mode=False,
+    r=16,                              # Rank của ma trận low-rank
+    lora_alpha=32,                     # Scaling factor: alpha/r điều chỉnh độ lớn update
+    target_modules=["query", "value"], # Chỉ áp dụng LoRA cho Q và V projection
+    lora_dropout=0.1,
+    bias="none",
+)
+
+base_model = ViTForImageClassification.from_pretrained(
+    "google/vit-base-patch16-224",
+    num_labels=10,
+    ignore_mismatched_sizes=True
+)
+
+# Áp dụng LoRA -- tự động đóng băng base model và thêm adapter
+model = get_peft_model(base_model, lora_config)
+
+# In số tham số có thể huấn luyện
+model.print_trainable_parameters()
+# Ví dụ output:
+# trainable params: 294,912 || all params: 86,567,400 || trainable%: 0.34%
+\end{minted}
+
+Sau khi huấn luyện, LoRA adapter có thể được lưu riêng (chỉ vài MB) và merge vào base model khi inference:
+
+\begin{minted}[breaklines=true, fontsize=\small]{python}
+# Lưu chỉ adapter LoRA (rất nhỏ)
+model.save_pretrained("lora_adapter/")
+
+# Tải và merge để inference nhanh hơn
+from peft import PeftModel
+base = ViTForImageClassification.from_pretrained("google/vit-base-patch16-224")
+model = PeftModel.from_pretrained(base, "lora_adapter/")
+model = model.merge_and_unload()   # Merge LoRA vào base -- không còn overhead
+\end{minted}
+
+\subsection*{QLoRA: Quantization + LoRA cho mô hình rất lớn}
+
+QLoRA kết hợp hai kỹ thuật: lượng tử hóa base model xuống 4-bit để giảm bộ nhớ, đồng thời áp dụng LoRA trong không gian 16-bit để duy trì chất lượng gradient:
+
+\begin{minted}[breaklines=true, fontsize=\small]{python}
+from transformers import BitsAndBytesConfig, ViTForImageClassification
+import torch
+
+# Cấu hình 4-bit quantization với NF4 (Normal Float 4)
+bnb_config = BitsAndBytesConfig(
+    load_in_4bit=True,
+    bnb_4bit_use_double_quant=True,    # Double quant giảm thêm 0.4 bits/param
+    bnb_4bit_quant_type="nf4",         # NF4 tốt hơn INT4 cho phân phối normal
+    bnb_4bit_compute_dtype=torch.float16,
+)
+
+# Tải mô hình lớn với 4-bit quantization
+model = ViTForImageClassification.from_pretrained(
+    "google/vit-large-patch16-224",
+    quantization_config=bnb_config,
+    device_map="auto",          # Tự phân bổ layers qua các GPU có sẵn
+    num_labels=10,
+    ignore_mismatched_sizes=True,
+)
+
+# Chuẩn bị model cho training với quantization
+from peft import prepare_model_for_kbit_training
+model = prepare_model_for_kbit_training(model)
+
+# Áp dụng LoRA như bình thường
+model = get_peft_model(model, lora_config)
+\end{minted}
+
+ViT-Large với 307M tham số thông thường cần khoảng 1.2GB để lưu trữ (float32). Với QLoRA 4-bit, chỉ cần khoảng 300MB---giảm 4x---trong khi hiệu suất fine-tuning gần như không thay đổi.
+
+\subsection*{Visual Prompt Tuning (VPT)}
+
+VPT là hướng tiếp cận khác: thay vì sửa đổi ma trận trọng số, ta \textit{học} một tập token đặc biệt (\textit{prompt tokens}) được thêm vào đầu chuỗi patch embeddings. Base model hoàn toàn đóng băng; chỉ có prompt tokens được huấn luyện:
+
+\begin{minted}[breaklines=true, fontsize=\small]{python}
+import torch
+import torch.nn as nn
+
+class VisualPromptTuning(nn.Module):
+    def __init__(self, base_model, num_prompts=10, hidden_dim=768):
+        super().__init__()
+        self.base_model = base_model
+
+        # Đóng băng toàn bộ base model
+        for param in self.base_model.parameters():
+            param.requires_grad = False
+
+        # Chỉ huấn luyện prompt tokens này -- rất ít tham số
+        # num_prompts=10, hidden_dim=768 -> 7680 tham số
+        self.prompt_tokens = nn.Parameter(
+            torch.zeros(1, num_prompts, hidden_dim)
+        )
+        nn.init.xavier_uniform_(self.prompt_tokens)
+
+    def forward(self, pixel_values):
+        # Lấy patch embeddings từ base model
+        embeddings = self.base_model.vit.embeddings(pixel_values)
+        # embeddings shape: (batch, num_patches+1, hidden_dim)
+
+        # Thêm prompt tokens vào trước các patch tokens
+        prompts = self.prompt_tokens.expand(pixel_values.size(0), -1, -1)
+        embeddings = torch.cat([embeddings[:, :1, :],   # CLS token
+                                prompts,
+                                embeddings[:, 1:, :]],  # Patch tokens
+                               dim=1)
+
+        # Forward qua phần còn lại của ViT
+        outputs = self.base_model.vit.encoder(embeddings)
+        logits = self.base_model.classifier(outputs.last_hidden_state[:, 0])
+        return logits
+\end{minted}
+
+\vspace{0.5em}
+\textbf{So sánh các chiến lược fine-tuning:}
+
+\begin{center}
+\begin{tabular}{lcccc}
+\hline
+\textbf{Phương pháp} & \textbf{\% Params} & \textbf{VRAM} & \textbf{Tốc độ} & \textbf{Hiệu quả} \\
+\hline
+Full fine-tuning  & 100\%    & Rất cao   & Chậm nhất  & Tốt nhất \\
+LoRA ($r$=16)    & $\sim$1\%  & Thấp      & Nhanh      & Tốt \\
+QLoRA            & $\sim$1\%  & Rất thấp  & Trung bình & Tốt \\
+VPT              & $<0.1\%$  & Rất thấp  & Rất nhanh  & Khá tốt \\
+Linear Probe     & $<0.01\%$ & Thấp nhất & Nhanh nhất & Phụ thuộc task \\
+\hline
+\end{tabular}
+\end{center}
+
+\begin{mdframed}[style=infobox]
+\textbf{Khi nào dùng PEFT thay vì full fine-tuning?}
+
+\textbf{Dùng PEFT (LoRA/QLoRA) khi:}
+\begin{itemize}
+    \item Mô hình base có trên 100M tham số (ViT-L, SAM, CLIP ViT-L)
+    \item Tập dữ liệu của bạn nhỏ ($<$10.000 ảnh) -- ít nguy cơ catastrophic forgetting
+    \item Cần triển khai nhiều adapter cho nhiều task khác nhau trên cùng một base model
+    \item GPU dưới 24GB VRAM
+\end{itemize}
+
+\textbf{Dùng full fine-tuning khi:}
+\begin{itemize}
+    \item Tập dữ liệu rất lớn và domain khác nhiều so với ImageNet
+    \item Cần hiệu suất tối đa và không bị giới hạn GPU
+    \item Mô hình tương đối nhỏ (ViT-B, ResNet-50)
+\end{itemize}
+\end{mdframed}

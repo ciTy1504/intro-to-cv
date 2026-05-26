@@ -1,3 +1,128 @@
-% part2 - chap2 - Section 2.2
-\section*{Section 2.2}
+\section{Các thư viện phổ biến: timm và Hugging Face Transformers cho ViT}
+\label{sec:timm_hf}
 
+Trong vài năm gần đây, việc phát triển một mô hình CV từ đầu đã dần trở thành ngoại lệ thay vì quy tắc. Cộng đồng mã nguồn mở đã đầu tư hàng nghìn giờ GPU để huấn luyện và chia sẻ các mô hình tiền huấn luyện chất lượng cao. Thay vì tái phát minh bánh xe, người kỹ sư thực chiến ngày nay cần biết cách khai thác tốt nhất kho tài nguyên đó. Hai thư viện nổi bật nhất trong hệ sinh thái này là \textbf{timm} (PyTorch Image Models) và \textbf{Hugging Face Transformers}.
+
+\subsection*{Thư viện timm: Hơn 700 mô hình tiền huấn luyện trong một API thống nhất}
+
+\texttt{timm} do Ross Wightman phát triển và hiện được duy trì bởi cộng đồng rộng lớn. Điểm mạnh của \texttt{timm} là cung cấp một API nhất quán cho hàng trăm kiến trúc---từ EfficientNet, ResNet, ConvNeXt, cho đến các ViT mới nhất---cùng với trọng số tiền huấn luyện được xác minh kỹ lưỡng:
+
+\begin{minted}[breaklines=true, fontsize=\small]{python}
+import timm
+
+# Liệt kê các mô hình ViT có sẵn với trọng số tiền huấn luyện
+models_available = timm.list_models("*vit*", pretrained=True)
+print(f"Available ViT models: {len(models_available)}")
+# In vài tên để xem: vit_base_patch16_224, vit_large_patch16_384, ...
+print(models_available[:5])
+
+# Tải mô hình với số lớp đầu ra tùy chỉnh
+model = timm.create_model(
+    "vit_base_patch16_224",
+    pretrained=True,
+    num_classes=10
+)
+
+# timm tự động biết transform phù hợp cho mỗi mô hình
+# -- không cần tra cứu mean/std thủ công nữa
+data_config = timm.data.resolve_model_data_config(model)
+transform_train = timm.data.create_transform(**data_config, is_training=True)
+transform_val   = timm.data.create_transform(**data_config, is_training=False)
+
+# Thống kê mô hình
+total_params = sum(p.numel() for p in model.parameters())
+trainable_params = sum(p.numel() for p in model.parameters()
+                       if p.requires_grad)
+print(f"Total parameters:     {total_params/1e6:.1f}M")
+print(f"Trainable parameters: {trainable_params/1e6:.1f}M")
+\end{minted}
+
+Hàm \texttt{timm.data.resolve\_model\_data\_config} trả về đúng cấu hình tiền xử lý mà mô hình đó được huấn luyện---kích thước ảnh, mean, std, và các phép interpolation---giúp loại bỏ một nguồn lỗi phổ biến là dùng sai giá trị chuẩn hóa.
+
+\vspace{0.5em}
+\texttt{timm} cũng hỗ trợ \textit{feature extraction} linh hoạt: lấy feature map ở bất kỳ lớp nào của mô hình mà không cần sửa code kiến trúc, rất hữu ích cho các bài toán như metric learning hay khớp đặc trưng ảnh:
+
+\begin{minted}[breaklines=true, fontsize=\small]{python}
+import torch
+
+# Tạo feature extractor -- loại bỏ lớp head phân loại
+feature_model = timm.create_model(
+    "vit_base_patch16_224",
+    pretrained=True,
+    num_classes=0   # num_classes=0 loại bỏ head phân loại
+)
+feature_model.eval()
+
+dummy_input = torch.randn(1, 3, 224, 224)
+with torch.no_grad():
+    features = feature_model(dummy_input)
+print(f"Feature vector shape: {features.shape}")  # torch.Size([1, 768])
+\end{minted}
+
+\subsection*{Hugging Face Transformers: Truy cập các mô hình ViT tiên tiến nhất}
+
+Hugging Face Transformers cung cấp quyền truy cập trực tiếp vào hàng nghìn mô hình được chia sẻ trên Hub, bao gồm những kiến trúc mới nhất chưa có trong \texttt{timm}. Đây là lựa chọn tốt nhất khi cần làm việc với các mô hình multimodal như CLIP, BLIP, hay Florence:
+
+\begin{minted}[breaklines=true, fontsize=\small]{python}
+from transformers import ViTForImageClassification, ViTImageProcessor
+import torch
+
+# Tải processor (xử lý ảnh) và mô hình từ Hugging Face Hub
+processor = ViTImageProcessor.from_pretrained("google/vit-base-patch16-224")
+model = ViTForImageClassification.from_pretrained(
+    "google/vit-base-patch16-224",
+    num_labels=10,
+    ignore_mismatched_sizes=True  # Bỏ qua mismatch ở lớp head
+)
+
+# Xử lý batch ảnh -- processor lo việc resize, normalize tự động
+from PIL import Image
+images = [Image.open("cat.jpg"), Image.open("dog.jpg")]
+inputs = processor(images=images, return_tensors="pt")
+# inputs chứa: {'pixel_values': tensor of shape (2, 3, 224, 224)}
+
+# Inference
+model.eval()
+with torch.no_grad():
+    outputs = model(**inputs)
+    logits = outputs.logits                    # shape: (2, 10)
+    predicted_classes = logits.argmax(dim=-1)  # shape: (2,)
+    confidences = logits.softmax(dim=-1).max(dim=-1).values
+
+print(f"Predicted classes: {predicted_classes.tolist()}")
+print(f"Confidence scores: {confidences.tolist()}")
+\end{minted}
+
+Điểm khác biệt quan trọng: Hugging Face dùng \texttt{ViTImageProcessor} thay vì \texttt{transforms} của torchvision, nhưng công việc thực hiện tương đương---resize, chuẩn hóa và chuyển thành tensor. Việc tách rời processor và model giúp đảm bảo luôn dùng đúng cấu hình tiền xử lý khớp với mô hình.
+
+\vspace{0.5em}
+\textbf{So sánh ba thư viện mô hình:}
+
+\begin{center}
+\begin{tabular}{lccc}
+\hline
+\textbf{Tiêu chí} & \textbf{torchvision} & \textbf{timm} & \textbf{Hugging Face} \\
+\hline
+Số lượng mô hình    & $\sim$60   & $\sim$700+    & $\sim$10.000+  \\
+API nhất quán       & Tốt        & Rất tốt       & Tốt            \\
+Truy cập SOTA       & Hạn chế    & Tốt           & Xuất sắc       \\
+Dễ fine-tuning      & Trung bình & Tốt           & Rất tốt        \\
+Multimodal support  & Không      & Hạn chế       & Xuất sắc       \\
+Tài liệu            & Tốt        & Tốt           & Rất tốt        \\
+\hline
+\end{tabular}
+\end{center}
+
+\begin{mdframed}[style=infobox]
+\textbf{Nên dùng thư viện nào?}
+
+\begin{itemize}
+    \item \textbf{torchvision}: Khi làm bài toán cổ điển (ResNet, VGG, MobileNet) và cần sự đơn giản. Phù hợp cho người mới bắt đầu.
+
+    \item \textbf{timm}: Lựa chọn mặc định cho hầu hết dự án CV thuần ảnh tĩnh. API nhất quán, nhiều mô hình chất lượng cao, tự động lo transform phù hợp. Đặc biệt mạnh cho ConvNeXt, EfficientNet, và các ViT variant.
+
+    \item \textbf{Hugging Face Transformers}: Khi cần mô hình mới nhất vừa được công bố, khi làm các bài toán multimodal (ảnh kết hợp văn bản), hoặc khi muốn dùng các mô hình lớn như ViT-L/ViT-H, DINOv2, CLIP, BLIP-2.
+\end{itemize}
+
+Trong thực tế, nhiều dự án kết hợp cả hai: dùng \texttt{timm} cho backbone CNN/ViT đơn thuần và Hugging Face cho các mô hình đặc biệt hoặc multimodal.
+\end{mdframed}

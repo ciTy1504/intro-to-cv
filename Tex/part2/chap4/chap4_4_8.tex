@@ -1,3 +1,256 @@
-% part2 - chap4 - Section 4.8
-\section*{Section 4.8}
+\section{Recipe 8: Xây dựng Trợ lý Thị giác (Vision Assistant) dựa trên LVLM}
+\label{sec:recipe_vision_assistant}
 
+Trợ lý thị giác là ứng dụng đỉnh cao của recipe chương này: một AI có khả năng nhìn, nhớ bối cảnh hội thoại, và trả lời câu hỏi nhiều lượt về ảnh. Không giống chatbot đơn giản (mỗi câu hỏi độc lập), trợ lý thị giác duy trì ngữ cảnh xuyên suốt cuộc trò chuyện --- bạn có thể hỏi "Thời tiết ra sao?" rồi tiếp theo hỏi "Có bao nhiêu người?", và AI hiểu cả hai câu đều về cùng một ảnh.
+
+\subsection{Bước 1: Thiết kế lớp VisionAssistant}
+\label{subsec:va_class}
+
+\begin{minted}[breaklines=true, fontsize=\small]{python}
+import anthropic
+import base64
+from pathlib import Path
+from dataclasses import dataclass, field
+from typing import Optional
+import cv2
+import numpy as np
+from PIL import Image
+
+client = anthropic.Anthropic(api_key="YOUR_KEY")
+
+@dataclass
+class VisionAssistant:
+    """
+    Tro ly thi giac voi bo nho hoi thoai da luot.
+    Su dung Claude API lam backbone LVLM.
+    """
+    model: str = "claude-opus-4-7"
+    conversation_history: list = field(default_factory=list)
+    current_image: Optional[str] = None
+
+    def _load_image_base64(self, image_path: str) -> tuple:
+        """Doc anh va chuyen sang base64."""
+        data = base64.standard_b64encode(
+            Path(image_path).read_bytes()
+        ).decode("utf-8")
+        ext = Path(image_path).suffix.lower().lstrip(".")
+        media_map = {
+            "jpg": "image/jpeg",
+            "jpeg": "image/jpeg",
+            "png": "image/png",
+            "gif": "image/gif",
+            "webp": "image/webp",
+        }
+        return data, media_map.get(ext, "image/jpeg")
+
+    def chat(self, user_message: str, image_path: Optional[str] = None) -> str:
+        """
+        Gui tin nhan (co the kem anh) va nhan phan hoi.
+        Neu image_path=None, tiep tuc hoi thoai ve anh truoc do.
+        """
+        content = []
+
+        if image_path:
+            # Cap nhat anh hien tai trong hoi thoai
+            self.current_image = image_path
+            img_data, media_type = self._load_image_base64(image_path)
+            content.append({
+                "type": "image",
+                "source": {
+                    "type": "base64",
+                    "media_type": media_type,
+                    "data": img_data,
+                },
+            })
+
+        content.append({"type": "text", "text": user_message})
+        self.conversation_history.append({"role": "user", "content": content})
+
+        response = client.messages.create(
+            model=self.model,
+            max_tokens=2048,
+            system=(
+                "Ban la mot tro ly thi giac thong minh, co kha nang phan tich anh "
+                "va tra loi cau hoi bang tieng Viet. "
+                "Hay mo ta chi tiet, chinh xac va huu ich. "
+                "Neu nguoi dung hoi ve anh da chia se truoc, hay tham chieu den no."
+            ),
+            messages=self.conversation_history,
+        )
+
+        assistant_msg = response.content[0].text
+        self.conversation_history.append({
+            "role": "assistant",
+            "content": assistant_msg
+        })
+        return assistant_msg
+
+    def analyze_with_preprocessing(self, image_path: str) -> dict:
+        """
+        Phan tich anh voi tien xu ly bang OpenCV truoc,
+        them thong tin ky thuat vao context cho LLM.
+        """
+        img = cv2.imread(image_path)
+        height, width = img.shape[:2]
+
+        # Tinh mat do canh (do phuc tap cau truc)
+        gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+        edges = cv2.Canny(gray, 50, 150)
+        edge_density = float(edges.sum()) / (width * height * 255)
+
+        # Tinh do sang trung binh
+        brightness = float(gray.mean()) / 255.0
+
+        # Them thong tin ky thuat vao prompt
+        context = (
+            f"Anh co kich thuoc {width}x{height} pixel. "
+            f"Mat do canh: {edge_density:.3f} (cao = nhieu chi tiet). "
+            f"Do sang trung binh: {brightness:.2f} (0=toi, 1=sang)."
+        )
+        analysis = self.chat(
+            f"Phan tich toan dien anh nay. {context}",
+            image_path
+        )
+
+        return {
+            "analysis": analysis,
+            "image_size": (width, height),
+            "edge_density": edge_density,
+            "brightness": brightness,
+        }
+
+    def reset(self):
+        """Xoa lich su hoi thoai, bat dau phien moi."""
+        self.conversation_history = []
+        self.current_image = None
+        print("Da dat lai hoi thoai.")
+\end{minted}
+
+\subsection{Bước 2: Ví dụ hội thoại nhiều lượt}
+\label{subsec:va_multiturn}
+
+\begin{minted}[breaklines=true, fontsize=\small]{python}
+assistant = VisionAssistant()
+
+# Luot 1: Gui anh va cau hoi dau tien
+print("Q: Anh nay chup o dau va co nhung gi?")
+print("A:", assistant.chat(
+    "Anh nay chup o dau va co nhung gi?",
+    "street.jpg"
+))
+
+# Luot 2: Tiep tuc hoi ve cung anh (khong can gui lai anh)
+print("\nQ: Thoi tiet trong anh nhu the nao?")
+print("A:", assistant.chat("Thoi tiet trong anh nhu the nao?"))
+
+# Luot 3: Cau hoi chi tiet hon
+print("\nQ: Co bao nhieu nguoi trong anh?")
+print("A:", assistant.chat("Co bao nhieu nguoi trong anh?"))
+
+# Luot 4: Cau hoi ngu canh (AI biet "ho" la ai tu luot truoc)
+print("\nQ: Ho dang lam gi vay?")
+print("A:", assistant.chat("Ho dang lam gi vay?"))
+
+# Phan tich ky thuat voi tien xu ly OpenCV
+print("\n--- Phan tich ky thuat ---")
+result = assistant.analyze_with_preprocessing("street.jpg")
+print(f"Kich thuoc: {result['image_size']}")
+print(f"Mat do canh: {result['edge_density']:.3f}")
+\end{minted}
+
+\subsection{Bước 3: Giao diện Gradio đầy đủ}
+\label{subsec:va_gradio}
+
+\begin{minted}[breaklines=true, fontsize=\small]{python}
+import gradio as gr
+import tempfile
+import os
+
+assistant = VisionAssistant()
+
+def chat_fn(message: str, image, history: list):
+    """Handler xu ly tin nhan va anh tu giao dien."""
+    image_path = None
+    if image is not None:
+        # Luu PIL image ra file tam de truyen vao assistant.chat()
+        with tempfile.NamedTemporaryFile(suffix=".jpg", delete=False) as f:
+            image.save(f.name, quality=95)
+            image_path = f.name
+
+    response = assistant.chat(message, image_path)
+
+    if image_path:
+        os.unlink(image_path)
+
+    history.append((message, response))
+    return "", history
+
+def reset_fn():
+    """Reset hoi thoai va xoa anh."""
+    assistant.reset()
+    return [], None
+
+with gr.Blocks(title="Vision Assistant") as demo:
+    gr.Markdown("# Tro ly Thi giac AI")
+    gr.Markdown(
+        "Upload anh va dat cau hoi. AI se nho noi dung hoi thoai "
+        "de tra loi cac cau hoi tiep theo."
+    )
+
+    with gr.Row():
+        with gr.Column(scale=1):
+            image_box = gr.Image(
+                type="pil",
+                label="Upload anh (tuy chon)"
+            )
+            reset_btn = gr.Button(
+                "Dat lai hoi thoai",
+                variant="secondary"
+            )
+
+        with gr.Column(scale=2):
+            chatbot_display = gr.Chatbot(
+                height=500,
+                label="Hoi thoai"
+            )
+            with gr.Row():
+                msg_box = gr.Textbox(
+                    placeholder="Hoi ve anh hoac bat ky dieu gi...",
+                    show_label=False,
+                    scale=4
+                )
+                send_btn = gr.Button("Gui", variant="primary", scale=1)
+
+    send_btn.click(
+        chat_fn,
+        [msg_box, image_box, chatbot_display],
+        [msg_box, chatbot_display]
+    )
+    msg_box.submit(
+        chat_fn,
+        [msg_box, image_box, chatbot_display],
+        [msg_box, chatbot_display]
+    )
+    reset_btn.click(reset_fn, [], [chatbot_display, image_box])
+
+demo.launch(share=True)
+\end{minted}
+
+\begin{mdframed}[style=infobox]
+\textbf{So sánh các LVLM cho ứng dụng thực tế (2025)}
+
+\begin{tabular}{lp{8.5cm}}
+\hline
+\textbf{Mô hình} & \textbf{Đặc điểm và khuyến nghị} \\
+\hline
+GPT-4o (OpenAI) & Mạnh nhất về lý luận đa phương thức, hỗ trợ audio/video. Phù hợp cho ứng dụng phức tạp cần độ chính xác cao. \\
+Claude Opus/Sonnet & Phân tích ảnh chi tiết, trả lời dài và có cấu trúc. Tốt cho tài liệu, bảng biểu, hình vẽ kỹ thuật. \\
+Gemini 1.5 Pro & Context window cực lớn (1M token), xử lý được video dài. Tốt cho phân tích tài liệu đa trang. \\
+LLaVA-1.6 (local) & Chạy cục bộ, không cần API. Phù hợp khi dữ liệu nhạy cảm hoặc không có internet. \\
+InternVL2 (local) & Mã nguồn mở, hiệu suất cạnh tranh với GPT-4V. Hỗ trợ tiếng Việt tốt hơn LLaVA. \\
+\hline
+\end{tabular}
+
+\vspace{6pt}
+\textbf{Khuyến nghị chọn mô hình:} Dùng Claude hoặc GPT-4o cho production API; dùng InternVL2 hoặc LLaVA-1.6 khi cần chạy on-premise.
+\end{mdframed}

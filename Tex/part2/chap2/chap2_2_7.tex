@@ -1,3 +1,166 @@
-% part2 - chap2 - Section 2.7
-\section*{Section 2.7}
+\section{Synthetic Data trong huấn luyện CV: GenAI for Data}
+\label{sec:synthetic_data}
 
+Trong CV thực chiến, thiếu dữ liệu có nhãn là rào cản phổ biến nhất. Thu thập ảnh thực tế đã khó; gán nhãn thủ công còn khó hơn---tốn thời gian, tốn tiền và đòi hỏi chuyên gia trong các domain đặc thù như y tế hay công nghiệp. \textit{Dữ liệu tổng hợp} (synthetic data), được tạo ra từ các công cụ AI tạo sinh, đang nổi lên như một giải pháp thực tế: không cần gán nhãn thủ công, có thể tạo vô hạn mẫu, và đặc biệt hữu ích cho các lớp hiếm gặp (\textit{rare classes}).
+
+\subsection*{Dùng Stable Diffusion để tạo ảnh huấn luyện}
+
+Stable Diffusion là mô hình text-to-image mạnh mẽ có thể tạo ảnh photorealistic từ mô tả văn bản. Với thư viện \texttt{diffusers} của Hugging Face, việc tích hợp vào pipeline dữ liệu rất đơn giản:
+
+\begin{minted}[breaklines=true, fontsize=\small]{bash}
+pip install diffusers transformers accelerate
+\end{minted}
+
+\begin{minted}[breaklines=true, fontsize=\small]{python}
+from diffusers import StableDiffusionPipeline
+import torch
+import os
+
+# Tải pipeline Stable Diffusion
+pipe = StableDiffusionPipeline.from_pretrained(
+    "stabilityai/stable-diffusion-2-1",
+    torch_dtype=torch.float16   # float16 để tiết kiệm VRAM
+)
+pipe = pipe.to("cuda")
+# Tắt NSFW filter để không bị block ảnh không liên quan
+pipe.safety_checker = None
+
+# Danh sách prompt cho các lớp cần tăng cường
+class_prompts = {
+    "golden_retriever": [
+        "a photo of a golden retriever dog, high quality, photorealistic",
+        "a golden retriever puppy playing in a park, natural lighting",
+        "a golden retriever dog portrait, studio photography",
+    ],
+    "siamese_cat": [
+        "a photo of a siamese cat sitting, photorealistic",
+        "a siamese cat looking at camera, high resolution",
+    ],
+}
+
+os.makedirs("data/synthetic", exist_ok=True)
+for class_name, prompts in class_prompts.items():
+    class_dir = f"data/synthetic/{class_name}"
+    os.makedirs(class_dir, exist_ok=True)
+
+    for prompt_idx, prompt in enumerate(prompts):
+        # Tạo 5 ảnh mỗi prompt với seed khác nhau
+        for seed in range(5):
+            generator = torch.Generator("cuda").manual_seed(seed * 100 + prompt_idx)
+            result = pipe(
+                prompt,
+                num_images_per_prompt=1,
+                guidance_scale=7.5,      # Mức độ tuân theo prompt
+                num_inference_steps=30,
+                generator=generator
+            )
+            img = result.images[0]
+            img.save(f"{class_dir}/syn_{prompt_idx:02d}_{seed:03d}.jpg")
+
+print("Synthetic data generation complete!")
+\end{minted}
+
+\textbf{Fine-tuning Stable Diffusion cho domain cụ thể} (ví dụ: ảnh X-quang, ảnh vệ tinh) bằng Dreambooth hoặc LoRA chỉ cần 20--30 ảnh gốc và có thể chạy trong vài giờ trên một GPU duy nhất. Kết quả là mô hình tạo sinh được ``tiêm'' kiến thức về domain của bạn.
+
+\subsection*{Domain Randomization cho CV công nghiệp và robot}
+
+Domain randomization là kỹ thuật tạo dữ liệu tổng hợp từ môi trường 3D, ngẫu nhiên hóa các yếu tố như ánh sáng, vật liệu bề mặt, góc camera và nền. Mô hình huấn luyện trên dữ liệu đa dạng như vậy sẽ tổng quát hóa tốt hơn ra môi trường thực:
+
+\begin{minted}[breaklines=true, fontsize=\small]{python}
+# BlenderProc là công cụ tạo dữ liệu tổng hợp 3D phổ biến nhất
+# Cài đặt: pip install blenderproc
+
+import blenderproc
+
+blenderproc.init()
+
+# Tải mô hình 3D của đối tượng cần detect
+obj = blenderproc.loader.load_obj("models/product.obj")[0]
+
+# Randomize vật liệu bề mặt
+material = obj.get_materials()[0]
+material.set_principled_shader_value("Base Color",
+    blenderproc.sampler.uniformSO3())
+
+# Randomize vị trí đèn chiếu
+light = blenderproc.types.Light()
+light.set_type("POINT")
+light.set_location(blenderproc.sampler.shell(
+    center=[0,0,0], radius_min=1, radius_max=1.5,
+    elevation_min=5, elevation_max=89
+))
+light.set_energy(blenderproc.sampler.uniform(50, 500))
+
+# Randomize góc camera
+cam_pose = blenderproc.math.build_transformation_mat(
+    location=blenderproc.sampler.sphere([0,0,0], radius=2),
+    rotation=blenderproc.sampler.uniformSO3()
+)
+blenderproc.camera.add_camera_pose(cam_pose)
+
+# Render ảnh với annotation tự động (bounding box, depth map, ...)
+data = blenderproc.renderer.render()
+blenderproc.writer.write_coco_annotations(
+    output_dir="data/synthetic_3d/",
+    instance_segmentation=True
+)
+\end{minted}
+
+NVIDIA Omniverse Replicator và Synthesis AI là các công cụ thương mại với pipeline tương tự nhưng cung cấp thêm các hiệu ứng thực tế như motion blur, lens distortion và điều kiện thời tiết.
+
+\subsection*{Đánh giá chất lượng dữ liệu tổng hợp}
+
+Trước khi trộn dữ liệu tổng hợp vào tập huấn luyện, cần đánh giá xem nó có thực sự phân phối tương đồng với dữ liệu thực không. \textit{Fréchet Inception Distance} (FID) là chỉ số tiêu chuẩn cho việc này---FID thấp hơn nghĩa là ảnh tổng hợp gần giống dữ liệu thực hơn:
+
+\begin{minted}[breaklines=true, fontsize=\small]{python}
+from torchmetrics.image.fid import FrechetInceptionDistance
+from torchvision import transforms
+from PIL import Image
+import torch
+
+# Khởi tạo FID metric với feature extractor Inception-V3
+fid = FrechetInceptionDistance(feature=2048, normalize=True)
+
+# Hàm load batch ảnh từ thư mục
+def load_images_as_tensor(image_paths, size=299):
+    transform = transforms.Compose([
+        transforms.Resize((size, size)),
+        transforms.ToTensor(),
+    ])
+    tensors = [transform(Image.open(p).convert("RGB")) for p in image_paths]
+    return torch.stack(tensors)
+
+# Cập nhật FID với ảnh thực
+real_tensor = load_images_as_tensor(real_image_paths)
+fid.update(real_tensor, real=True)
+
+# Cập nhật FID với ảnh tổng hợp
+synthetic_tensor = load_images_as_tensor(synthetic_image_paths)
+fid.update(synthetic_tensor, real=False)
+
+fid_score = fid.compute()
+print(f"FID Score: {fid_score:.2f}")
+# FID < 10:  Tuyệt vời -- khó phân biệt thật/giả
+# FID < 50:  Chấp nhận được
+# FID > 100: Dữ liệu tổng hợp có domain gap lớn
+\end{minted}
+
+Ngoài FID, nên kiểm tra thực nghiệm bằng cách huấn luyện mô hình chỉ trên dữ liệu tổng hợp và đánh giá trên dữ liệu thực---nếu hiệu suất quá thấp, cần cải thiện chất lượng ảnh tổng hợp hoặc áp dụng domain adaptation.
+
+\begin{mdframed}[style=infobox]
+\textbf{Cạm bẫy của dữ liệu tổng hợp}
+
+Dữ liệu tổng hợp mạnh mẽ nhưng không phải thuốc chữa bách bệnh. Một số cạm bẫy quan trọng:
+
+\begin{enumerate}
+    \item \textbf{Domain gap:} Mô hình học trên ảnh tổng hợp có thể thất bại trên ảnh thực do sự khác biệt về texture, ánh sáng và nhiễu camera. Giải pháp: trộn một tỷ lệ nhỏ dữ liệu thực (thậm chí không cần nhãn) với dữ liệu tổng hợp.
+
+    \item \textbf{Distribution shift:} Stable Diffusion có thể không tạo đúng phân phối của domain cụ thể (ảnh y tế, ảnh vệ tinh). Fine-tune mô hình tạo sinh trên dữ liệu domain trước.
+
+    \item \textbf{Label noise:} Ảnh tổng hợp từ text prompt đôi khi không chính xác với nhãn---``a cat'' có thể tạo ra ảnh chứa cả chó. Cần lọc thủ công hoặc dùng mô hình phân loại để kiểm tra nhãn.
+
+    \item \textbf{Memorization:} Nếu quá nhiều ảnh tổng hợp, mô hình có thể học các artifact của bộ tạo sinh thay vì đặc trưng thực sự của đối tượng.
+\end{enumerate}
+
+\textbf{Quy tắc thực hành:} Bắt đầu với tỷ lệ 20--30\% dữ liệu tổng hợp trộn với dữ liệu thực, theo dõi hiệu suất trên validation set thực, và chỉ tăng tỷ lệ nếu kết quả cải thiện.
+\end{mdframed}

@@ -1,24 +1,24 @@
-\chapter{Thị giác Đa phương thức và các Ứng dụng Tiên phong}
-\label{chap:multimodal_and_advanced_applications}
+\chapter{Các Mô hình Sinh và Sáng tạo Thị giác}
+\label{chap:generative_models}
 %----------------------------------------------------------------------------------------
 %	INTRODUCTION
 %----------------------------------------------------------------------------------------
 
-Hành trình của chúng ta qua thế giới thị giác máy tính đã đi từ những khối xây dựng cơ bản nhất—các pixel và cạnh—đến những kiến trúc nơ-ron phức tạp có khả năng học, nhận dạng, và thậm chí là sáng tạo. Chúng ta đã dạy cho máy móc cách "nhìn". Nhưng "nhìn" thôi là chưa đủ. Trí thông minh thực thụ không tồn tại trong một không gian biệt lập; nó được định hình bởi sự tương tác, bối cảnh, và khả năng kết nối các luồng thông tin khác nhau. Con người chúng ta không chỉ nhìn thấy một con chó; chúng ta có thể nói "đó là một chú chó golden retriever đang chơi đùa trong công viên" và hiểu được những hàm ý đằng sau đó.
+Từ những chương đầu tiên, hành trình của chúng ta trong thế giới thị giác máy tính chủ yếu xoay quanh việc \textit{thấu hiểu} và \textit{phân tích}. Chúng ta đã huấn luyện các mô hình để nhận dạng (classification), định vị (detection), và phân tách (segmentation) thế giới thị giác—về cơ bản là dạy máy tính cách "nhìn" và diễn giải những gì đã có. Nhưng có một khía cạnh khác của trí thông minh, một năng lực mà từ lâu được xem là độc quyền của con người: khả năng \textbf{sáng tạo}.
 
-Chương cuối cùng của phần lý thuyết này sẽ đưa chúng ta đến biên giới quan trọng nhất của thị giác máy tính hiện đại, nơi những bức tường ngăn cách giữa các giác quan kỹ thuật số đang sụp đổ: \textbf{Thị giác Đa phương thức (Multimodal Vision)}. Đây là bước nhảy vọt từ việc \textit{nhận thức} (perceiving) một cách thụ động sang \textit{lý luận} (reasoning) và \textit{tương tác} (interacting) một cách chủ động.
+Điều gì sẽ xảy ra nếu thay vì chỉ phân tích, chúng ta có thể dạy máy tính cách \textit{tưởng tượng} và \textit{tổng hợp} ra những hình ảnh và video hoàn toàn mới, những thế giới chưa từng tồn tại?
 
-Trọng tâm của chương này xuất phát từ một câu hỏi đơn giản nhưng sâu sắc: Làm thế nào để dạy máy tính "nói" về những gì nó "thấy"? Làm thế nào để nó có thể hiểu được một câu lệnh bằng ngôn ngữ tự nhiên và liên kết nó với các đối tượng trong một bức ảnh hay một đoạn video? Đây là kỷ nguyên của sự hợp nhất giữa thị giác và ngôn ngữ, nơi các pixel, từ ngữ, và thậm chí cả các chuỗi hành động được đưa vào cùng một không gian ý nghĩa.
+Chương này sẽ đưa chúng ta vào một lãnh địa kỳ diệu và đầy biến đổi của thị giác máy tính: \textbf{các mô hình sinh (generative models)}. Đây không còn là cuộc chơi của việc nhận dạng, mà là nghệ thuật của sự sáng tạo. Chúng ta sẽ khám phá những thuật toán có khả năng học được "phân phối xác suất" của dữ liệu thị giác—nói cách khác, chúng học được "ngữ pháp" tạo nên một bức ảnh chân dung, một khung cảnh thiên nhiên, hay một video về một chú chó đang chạy—và sau đó sử dụng ngữ pháp đó để tạo ra những tác phẩm mới.
 
-Chúng ta sẽ khám phá sự tiến hóa của các hệ thống đa phương thức này:
+Cuộc cách mạng sáng tạo này đã diễn ra qua nhiều làn sóng, và chúng ta sẽ lần theo dấu chân của từng cuộc cách mạng đó:
 \begin{itemize}
-	\item Chúng ta sẽ bắt đầu với cuộc cách mạng \textbf{CLIP}, mô hình đã tạo ra cầu nối đầu tiên vững chắc giữa không gian hình ảnh và không gian văn bản, mở ra kỷ nguyên của khả năng hiểu thị giác \textbf{zero-shot} và đặt nền móng cho gần như mọi mô hình đa phương thức sau này.
+	\item Chúng ta sẽ bắt đầu với \textbf{Mạng Sinh đối nghịch (Generative Adversarial Networks - GANs)}, một ý tưởng thiên tài về một trò chơi "mèo vờn chuột" giữa hai mạng nơ-ron: một "Họa sĩ" (Generator) cố gắng vẽ ra những bức ảnh giả ngày càng giống thật, và một "Nhà phê bình" (Discriminator) cố gắng phân biệt giữa thật và giả. Cuộc đối đầu này đã đẩy khả năng sinh ảnh lên một tầm cao mới, với các mô hình như \textbf{StyleGAN} có khả năng tạo ra những khuôn mặt người siêu thực.
 	
-	\item Từ đó, chúng ta sẽ chứng kiến sự trỗi dậy của các \textbf{Mô hình Ngôn ngữ Lớn Đa phương thức (LVLMs)} như GPT-4o, LLaVA, và Gemini. Đây không còn là các mô hình thị giác đơn thuần; chúng là những "bộ não" kỹ thuật số có khả năng "nhìn", "đọc", và "trò chuyện" về thế giới, tạo ra một hình thức tương tác người-máy hoàn toàn mới.
+	\item Tiếp theo, chúng ta sẽ chứng kiến sự trỗi dậy của một mô thức mới đã làm lu mờ cả GANs: \textbf{các Mô hình Khuếch tán (Diffusion Models)}. Lấy cảm hứng từ nhiệt động lực học, các mô hình này học cách "khử nhiễu" một cách từ từ để biến một mớ hỗn độn ngẫu nhiên thành một hình ảnh mạch lạc và chi tiết. Chính công nghệ này là nền tảng đằng sau các công cụ tạo ảnh từ văn bản (text-to-image) gây chấn động như \textbf{Stable Diffusion} và \textbf{Midjourney}, cho phép bất kỳ ai cũng có thể trở thành một "họa sĩ" chỉ bằng vài dòng mô tả.
 	
-	\item Chúng ta sẽ mở rộng khái niệm này sang chiều thời gian với các \textbf{Mô hình Ngôn ngữ-Video (Video-Language Models)}, khám phá cách các hệ thống AI có thể hiểu và mô tả các hành động, sự kiện và cốt truyện diễn ra trong các video.
+	\item Từ ảnh tĩnh, chúng ta sẽ tiến vào thế giới của chuyển động với các mô hình \textbf{Text-to-Video}. Chúng ta sẽ khám phá những công nghệ đột phá đằng sau các mô hình gây kinh ngạc như \textbf{Sora} của OpenAI, có khả năng tạo ra các đoạn video siêu thực, động và có cốt truyện chỉ từ một câu lệnh.
 	
-	\item Cuối cùng, chúng ta sẽ xem xét cách những năng lực nhận thức đa phương thức này được triển khai vào thế giới thực. Chúng ta sẽ tìm hiểu về vai trò của thị giác trong các lĩnh vực tiên phong như \textbf{Robot học (Robotics)}, \textbf{Thực tế Tăng cường/Thực tế ảo (AR/VR)}, và các thách thức trong việc triển khai các mô hình này trên các \textbf{thiết bị biên (Edge Deployment)}.
+	\item Và vượt ra ngoài không gian 2D, chúng ta sẽ bước vào thế giới 3D với \textbf{Neural Rendering}. Các công nghệ như \textbf{NeRFs} và \textbf{Gaussian Splatting} đang thay đổi cách chúng ta tái tạo và tổng hợp các khung cảnh 3D từ một vài bức ảnh, mở đường cho một tương lai của metaverse, thực tế ảo, và các cặp song sinh kỹ thuật số (digital twins).
 \end{itemize}
 
-Chương này là sự hội tụ của tất cả các ý tưởng mà chúng ta đã xây dựng: CNN và Transformer cung cấp "đôi mắt", học tự giám sát và các mô hình nền tảng cung cấp "bộ não" có khả năng khái quát hóa, và giờ đây, sự kết hợp với ngôn ngữ sẽ mang lại "tiếng nói" và khả năng tương tác. Chào mừng bạn đến với chương cuối cùng của cuộc hành trình lý thuyết, nơi chúng ta sẽ chứng kiến sự ra đời của một thế hệ AI không chỉ nhìn, mà còn hiểu, giao tiếp, và tương tác với thế giới của chúng ta một cách sâu sắc và đa chiều.
+Chương này không chỉ là một chuyến tham quan các thuật toán. Nó là một cuộc khám phá về ranh giới giữa nhận thức và sáng tạo, giữa thực tế và tưởng tượng. Các mô hình sinh đang thay đổi không chỉ ngành công nghiệp sáng tạo, mà còn cả cách chúng ta nghĩ về bản chất của trí thông minh. Hãy cùng bước vào thế giới nơi máy móc không chỉ học cách nhìn, mà còn học cách mơ.

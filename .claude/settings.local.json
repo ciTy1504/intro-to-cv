@@ -1,0 +1,13 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(latexmk -pdf main.tex)",
+      "Bash(Get-ChildItem -Path \"c:\\\\Users\\\\admin\\\\Desktop\\\\intro-to-cv\\\\Tex\\\\part1\\\\\" -Recurse -Filter \"*.tex\" | Select-Object -ExpandProperty FullName)",
+      "Bash(python -c \"import matplotlib; import numpy; print\\('OK'\\)\")",
+      "Bash(pip install *)",
+      "Bash(find /mnt/c/Users/admin/Desktop/intro-to-cv/Tex/part2 -type f | sort)",
+      "Read(//mnt/c/Users/admin/Desktop/intro-to-cv/Tex/**)",
+      "Bash(dir /s /b \"c:\\\\Users\\\\admin\\\\Desktop\\\\intro-to-cv\\\\Tex\\\\part2\")"
+    ]
+  }
+}

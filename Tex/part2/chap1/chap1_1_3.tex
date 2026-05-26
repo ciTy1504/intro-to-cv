@@ -1,3 +1,277 @@
-% part2 - chap1 - Section 1.3
-\section*{Section 1.3}
+\section{Tiền xử lý và Tăng cường Dữ liệu (Augmentation)}
+\label{sec:preprocessing_augmentation}
 
+Dữ liệu thô khi vừa thu thập về thường không ở trạng thái lý tưởng để đưa vào huấn luyện mô hình. Ảnh có thể có nhiều kích thước khác nhau, kênh màu không đồng nhất, giá trị pixel trải rộng trên nhiều dải khác nhau. Tiền xử lý là bước chuẩn hóa dữ liệu về một định dạng nhất quán mà mô hình có thể tiêu thụ hiệu quả. Song song đó, tăng cường dữ liệu (data augmentation) là kỹ thuật tạo ra các biến thể nhân tạo từ dữ liệu hiện có, giúp mô hình học được sự bất biến với các phép biến đổi hình học và quang học thường gặp trong thực tế.
+
+\subsection{Các thư viện phổ biến: OpenCV, Pillow}
+\label{subsec:opencv_pillow}
+
+Hai thư viện xử lý ảnh được sử dụng rộng rãi nhất trong hệ sinh thái Python là \textbf{OpenCV} và \textbf{Pillow (PIL)}. Mỗi thư viện có điểm mạnh riêng: OpenCV nổi trội về tốc độ và các thuật toán CV cổ điển (edge detection, feature matching, camera calibration), trong khi Pillow có API thân thiện hơn cho các tác vụ xử lý ảnh đơn giản và hỗ trợ rộng rãi các định dạng file.
+
+\subsubsection{Các thao tác cơ bản với OpenCV}
+
+Lưu ý quan trọng khi làm việc với OpenCV: thư viện này đọc ảnh theo thứ tự kênh màu \textbf{BGR} (Blue-Green-Red), ngược với thứ tự RGB thông thường. Đây là nguồn gốc của rất nhiều lỗi tinh tế khi hiển thị ảnh hoặc kết hợp OpenCV với các thư viện khác:
+
+\begin{minted}[breaklines=true, fontsize=\small]{python}
+import cv2
+import numpy as np
+
+# Doc anh (OpenCV doc theo dinh dang BGR, khong phai RGB)
+img = cv2.imread("image.jpg")
+print(f"Kich thuoc anh: {img.shape}")   # (H, W, C)
+print(f"Kieu du lieu: {img.dtype}")     # uint8
+
+# Chuyen BGR sang RGB de dung voi matplotlib/PIL
+img_rgb = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
+
+# Resize anh ve 224x224 (chuan cho nhieu CNN)
+img_resized = cv2.resize(img, (224, 224),
+                          interpolation=cv2.INTER_LANCZOS4)
+
+# Chuan hoa gia tri pixel ve [0, 1]
+img_normalized = img_resized.astype(np.float32) / 255.0
+
+# Chuyen sang anh xam truoc khi xu ly
+img_gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+
+# Lam mo Gaussian de giam nhieu
+blurred = cv2.GaussianBlur(img, (5, 5), sigmaX=0)
+
+# Phat hien bien Canny
+edges = cv2.Canny(img_gray, threshold1=50, threshold2=150)
+
+# Hieu chinh do sang va do tuong phan bang CLAHE
+clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8))
+img_clahe = clahe.apply(img_gray)
+
+# Luu anh da xu ly
+cv2.imwrite("output_processed.jpg", img_resized)
+\end{minted}
+
+\subsubsection{Các thao tác cơ bản với Pillow}
+
+Pillow cung cấp API hướng đối tượng trực quan hơn, đặc biệt phù hợp cho các thao tác như điều chỉnh độ sáng, tương phản và màu sắc thông qua lớp \texttt{ImageEnhance}:
+
+\begin{minted}[breaklines=true, fontsize=\small]{python}
+from PIL import Image, ImageEnhance, ImageFilter
+import numpy as np
+
+# Mo anh (Pillow su dung RGB theo mac dinh)
+img = Image.open("image.jpg")
+print(f"Kich thuoc: {img.size}")   # (W, H) - luu y nguoc voi numpy
+print(f"Mode: {img.mode}")         # RGB, RGBA, L (grayscale), ...
+
+# Resize ve 224x224 voi bo noi suy LANCZOS (chat luong cao)
+img_resized = img.resize((224, 224), Image.LANCZOS)
+
+# Dieu chinh do sang (1.0 = goc, > 1.0 = sang hon)
+brightness_enhancer = ImageEnhance.Brightness(img)
+img_bright = brightness_enhancer.enhance(1.5)
+
+# Dieu chinh do tuong phan
+contrast_enhancer = ImageEnhance.Contrast(img)
+img_high_contrast = contrast_enhancer.enhance(1.3)
+
+# Dieu chinh do bao hoa mau
+saturation_enhancer = ImageEnhance.Color(img)
+img_saturated = saturation_enhancer.enhance(1.4)
+
+# Ap dung bo loc Gaussian blur
+img_blurred = img.filter(ImageFilter.GaussianBlur(radius=2))
+
+# Chuyen sang numpy array de dung voi PyTorch/numpy
+img_array = np.array(img_resized)         # shape: (224, 224, 3)
+img_tensor_ready = img_array / 255.0      # chuan hoa ve [0, 1]
+
+# Luu ket qua voi nen chat luong cao
+img_resized.save("output.jpg", quality=95)
+\end{minted}
+
+\begin{mdframed}[style=infobox]
+    \textbf{Khi nào dùng OpenCV, khi nào dùng Pillow?}
+
+    \begin{itemize}
+        \item Dùng \textbf{OpenCV} khi cần: xử lý video, các thuật toán CV cổ điển (feature detection, optical flow, camera calibration), tốc độ cao trên ảnh lớn, xử lý trên GPU với CUDA.
+        \item Dùng \textbf{Pillow} khi cần: đọc/ghi nhiều định dạng file (TIFF, WebP, HEIF, ...), các phép biến đổi màu sắc đơn giản, tích hợp với \texttt{torchvision.transforms}.
+        \item Trong thực tế, nhiều pipeline kết hợp cả hai: dùng OpenCV để đọc và tiền xử lý nhanh, sau đó chuyển sang Pillow cho các bước cụ thể cần API thân thiện hơn.
+    \end{itemize}
+\end{mdframed}
+
+\subsection{Kỹ thuật tăng cường dữ liệu với Albumentations}
+\label{subsec:albumentations}
+
+Trong khi \texttt{torchvision.transforms} là lựa chọn phổ biến ban đầu vì tích hợp tự nhiên với PyTorch, \textbf{Albumentations} đã nhanh chóng trở thành thư viện augmentation được ưa chuộng hơn trong các ứng dụng thực tế. Lý do có nhiều:
+
+\begin{itemize}
+    \item \textbf{Tốc độ:} Albumentations được tối ưu bằng NumPy và OpenCV, thường nhanh hơn torchvision transforms từ 5 đến 50 lần cho cùng một phép biến đổi.
+    \item \textbf{Hỗ trợ đa dạng annotation:} Albumentations tự động áp dụng cùng phép biến đổi hình học lên cả ảnh, bounding box, segmentation mask và keypoint. Đây là lợi thế quyết định cho detection và segmentation.
+    \item \textbf{Kiểm soát xác suất:} Mỗi phép biến đổi có tham số \texttt{p} riêng, cho phép kiểm soát chính xác tần suất áp dụng.
+    \item \textbf{Phong phú về phép biến đổi:} Hơn 70 phép biến đổi được tối ưu hóa sẵn, từ phổ biến đến chuyên biệt như elastic transform, grid distortion, optical distortion.
+\end{itemize}
+
+\subsubsection{Pipeline augmentation hoàn chỉnh}
+
+Đoạn code dưới đây xây dựng một pipeline augmentation đầy đủ, bao gồm cả \texttt{bbox\_params} để tự động biến đổi bounding box khi ảnh bị thay đổi về mặt hình học:
+
+\begin{minted}[breaklines=true, fontsize=\small]{python}
+import albumentations as A
+from albumentations.pytorch import ToTensorV2
+import cv2
+import numpy as np
+
+# Pipeline augmentation cho tap HUAN LUYEN
+train_transform = A.Compose([
+    # Bien doi hinh hoc: cat ngau nhien va resize
+    A.RandomResizedCrop(height=224, width=224, scale=(0.8, 1.0)),
+
+    # Lat ngang (an toan voi hau het bai toan)
+    A.HorizontalFlip(p=0.5),
+
+    # Bien doi quang hoc: dieu chinh mau sac
+    A.ColorJitter(
+        brightness=0.2,
+        contrast=0.2,
+        saturation=0.2,
+        hue=0.1,
+        p=0.8
+    ),
+
+    # Them nhieu Gaussian de tang tinh robust
+    A.GaussNoise(var_limit=(10.0, 50.0), p=0.3),
+
+    # Xoay nhe
+    A.Rotate(limit=15, p=0.5),
+
+    # Lam mo nhe de giam overfit vao anh qua sac net
+    A.OneOf([
+        A.GaussianBlur(blur_limit=(3, 5)),
+        A.MotionBlur(blur_limit=5),
+    ], p=0.2),
+
+    # Chuan hoa voi gia tri ImageNet mean/std
+    A.Normalize(
+        mean=[0.485, 0.456, 0.406],
+        std=[0.229, 0.224, 0.225]
+    ),
+
+    # Chuyen sang PyTorch tensor (H, W, C) -> (C, H, W)
+    ToTensorV2(),
+
+], bbox_params=A.BboxParams(
+    format='pascal_voc',          # [x_min, y_min, x_max, y_max]
+    label_fields=['category_ids'],
+    min_visibility=0.3            # bo qua bbox bi cat mat > 70%
+))
+
+# Pipeline cho tap KIEM TRA / VALIDATION (khong co augmentation)
+val_transform = A.Compose([
+    # Resize lon hon mot chut truoc khi center crop
+    A.Resize(height=256, width=256),
+    A.CenterCrop(height=224, width=224),
+    A.Normalize(
+        mean=[0.485, 0.456, 0.406],
+        std=[0.229, 0.224, 0.225]
+    ),
+    ToTensorV2(),
+])
+\end{minted}
+
+\subsubsection{Tích hợp với PyTorch Dataset}
+
+Dưới đây là cách tích hợp pipeline Albumentations vào một PyTorch Dataset class hoàn chỉnh:
+
+\begin{minted}[breaklines=true, fontsize=\small]{python}
+import torch
+from torch.utils.data import Dataset, DataLoader
+import cv2
+import numpy as np
+from pathlib import Path
+from typing import List, Optional, Callable
+
+class CVDataset(Dataset):
+    """
+    Dataset tong quat cho bai toan phan loai anh voi Albumentations.
+    """
+    def __init__(
+        self,
+        image_paths: List[str],
+        labels: List[int],
+        transform: Optional[Callable] = None
+    ):
+        """
+        Args:
+            image_paths: Danh sach duong dan den cac file anh
+            labels:      Danh sach nhan tuong ung
+            transform:   Pipeline augmentation (Albumentations Compose)
+        """
+        self.image_paths = image_paths
+        self.labels = labels
+        self.transform = transform
+
+    def __len__(self) -> int:
+        return len(self.image_paths)
+
+    def __getitem__(self, idx: int):
+        # Doc anh bang OpenCV (nhanh hon Pillow voi anh lon)
+        image = cv2.imread(self.image_paths[idx])
+        if image is None:
+            raise FileNotFoundError(
+                f"Khong doc duoc anh: {self.image_paths[idx]}"
+            )
+
+        # Chuyen BGR sang RGB (Albumentations mong doi RGB)
+        image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
+
+        # Ap dung augmentation
+        if self.transform:
+            augmented = self.transform(image=image)
+            image = augmented["image"]  # da la tensor PyTorch
+
+        return image, self.labels[idx]
+
+
+# Khoi tao dataset va DataLoader
+train_dataset = CVDataset(
+    image_paths=train_image_paths,
+    labels=train_labels,
+    transform=train_transform
+)
+
+val_dataset = CVDataset(
+    image_paths=val_image_paths,
+    labels=val_labels,
+    transform=val_transform
+)
+
+train_loader = DataLoader(
+    train_dataset,
+    batch_size=32,
+    shuffle=True,
+    num_workers=4,
+    pin_memory=True  # Tang toc chuyen du lieu sang GPU
+)
+
+val_loader = DataLoader(
+    val_dataset,
+    batch_size=64,
+    shuffle=False,
+    num_workers=4,
+    pin_memory=True
+)
+\end{minted}
+
+\begin{mdframed}[style=infobox]
+    \textbf{Chiến lược augmentation theo loại bài toán}
+
+    Không phải phép augmentation nào cũng phù hợp với mọi bài toán. Dưới đây là hướng dẫn thực tế:
+
+    \begin{itemize}
+        \item \textbf{Phân loại ảnh:} Có thể áp dụng augmentation mạnh bao gồm cả CutMix và MixUp (trộn hai ảnh lại với nhau). Mô hình phân loại ít nhạy cảm hơn với biến dạng hình học.
+
+        \item \textbf{Phát hiện đối tượng:} Tránh các phép biến đổi làm mất đối tượng khỏi ảnh (crop quá mạnh). Sử dụng \texttt{min\_visibility} trong \texttt{BboxParams}. Flip dọc thường không phù hợp nếu nhãn phân biệt trên/dưới.
+
+        \item \textbf{Phân đoạn ngữ nghĩa:} Mọi phép biến đổi hình học phải được áp dụng đồng thời lên cả ảnh lẫn mask. Albumentations xử lý điều này tự động qua tham số \texttt{mask} trong dictionary đầu vào.
+
+        \item \textbf{Nhận dạng ký tự (OCR):} Tránh xoay góc lớn và flip ngang vì chúng làm thay đổi ý nghĩa của ký tự. Chỉ dùng biến đổi ánh sáng và biến dạng nhẹ.
+    \end{itemize}
+\end{mdframed}

@@ -1,3 +1,219 @@
-% part2 - chap4 - Section 4.5
-\section*{Section 4.5}
+\section{Recipe 5: Xây dựng ứng dụng Webcam thời gian thực}
+\label{sec:recipe_realtime}
 
+Ứng dụng thị giác thời gian thực đặt ra một bài toán kỹ thuật khác hẳn so với xử lý offline: mọi thứ phải xảy ra trong vòng dưới 33ms để đạt 30 FPS. Recipe này xây dựng một ứng dụng kết hợp phát hiện vật thể (YOLO) và phân loại cảnh (ResNet) trên luồng webcam, đồng thời trình bày các kỹ thuật tối ưu hóa để đảm bảo hiệu suất thực tế.
+
+\subsection{Bước 1: Khởi tạo mô hình và công cụ đo FPS}
+\label{subsec:rt_init}
+
+\begin{minted}[breaklines=true, fontsize=\small]{python}
+import cv2
+import torch
+import torchvision.transforms as transforms
+from torchvision import models
+import numpy as np
+import time
+from collections import deque
+
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
+# --- Mô hình phân loại: ResNet-50 pretrained ImageNet ---
+classifier = models.resnet50(weights=models.ResNet50_Weights.IMAGENET1K_V2)
+classifier.eval().to(device)
+
+# Nap danh sach 1000 lop cua ImageNet
+with open("imagenet_classes.txt") as f:
+    imagenet_classes = [line.strip() for line in f.readlines()]
+
+# --- Mô hình phát hiện: YOLOv8s ---
+from ultralytics import YOLO
+detector = YOLO("yolov8s.pt")
+
+# --- Transform cho classifier ---
+transform = transforms.Compose([
+    transforms.ToPILImage(),
+    transforms.Resize(256),
+    transforms.CenterCrop(224),
+    transforms.ToTensor(),
+    transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225]),
+])
+
+# Theo doi FPS qua cua so 30 frame cuoi
+fps_buffer = deque(maxlen=30)
+\end{minted}
+
+\begin{mdframed}[style=infobox]
+\textbf{Model Warmup: Đừng bỏ qua bước này}
+
+Lần đầu tiên chạy inference trên GPU, PyTorch cần biên dịch kernel CUDA và phân bổ bộ nhớ. Điều này có thể mất 1--5 giây, làm cho vài frame đầu tiên rất chậm. Giải pháp là \textbf{warmup} mô hình trước khi bắt đầu capture:
+
+\begin{minted}[breaklines=true, fontsize=\small]{python}
+# Warmup: chay mot forward pass gia de khoi dong CUDA
+dummy_input = torch.zeros(1, 3, 224, 224).to(device)
+with torch.no_grad():
+    for _ in range(3):
+        classifier(dummy_input)
+detector(np.zeros((640, 640, 3), dtype=np.uint8))
+print("Warmup hoan tat")
+\end{minted}
+\end{mdframed}
+
+\subsection{Bước 2: Vòng lặp capture và xử lý chính}
+\label{subsec:rt_main_loop}
+
+\begin{minted}[breaklines=true, fontsize=\small]{python}
+cap = cv2.VideoCapture(0)
+# Dat do phan giai cao de co nhieu thong tin hon
+cap.set(cv2.CAP_PROP_FRAME_WIDTH, 1280)
+cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 720)
+
+while True:
+    t_start = time.time()
+    ret, frame = cap.read()
+    if not ret:
+        break
+
+    # --- Phát hiện vật thể ---
+    det_results = detector(frame, conf=0.5, verbose=False)[0]
+    annotated = det_results.plot()  # Ve bbox va nhan len frame
+
+    # --- Phân loại cảnh tổng thể ---
+    rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+    tensor = transform(rgb).unsqueeze(0).to(device)
+    with torch.no_grad():
+        out = classifier(tensor)
+        top3_probs, top3_idx = torch.softmax(out, dim=1)[0].topk(3)
+
+    # --- Hiển thị thông tin ---
+    fps = 1.0 / (time.time() - t_start)
+    fps_buffer.append(fps)
+    avg_fps = sum(fps_buffer) / len(fps_buffer)
+
+    # FPS (goc tren trai)
+    cv2.putText(
+        annotated, f"FPS: {avg_fps:.1f}",
+        (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 255, 0), 2
+    )
+
+    # Top-3 phan loai canh
+    for i, (prob, idx) in enumerate(zip(top3_probs, top3_idx)):
+        label = f"{imagenet_classes[idx.item()]}: {prob.item():.1%}"
+        cv2.putText(
+            annotated, label,
+            (10, 65 + i * 25), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 0), 1
+        )
+
+    cv2.imshow("Real-time CV", annotated)
+
+    key = cv2.waitKey(1) & 0xFF
+    if key == ord("q"):
+        break
+    elif key == ord("s"):   # Luu screenshot
+        filename = f"screenshot_{int(time.time())}.jpg"
+        cv2.imwrite(filename, frame)
+        print(f"Da luu: {filename}")
+
+cap.release()
+cv2.destroyAllWindows()
+\end{minted}
+
+\subsection{Tối ưu hóa hiệu suất thời gian thực}
+\label{subsec:rt_optimization}
+
+Khi ứng dụng chạy chậm hơn mong đợi, hãy áp dụng các kỹ thuật sau theo thứ tự ưu tiên:
+
+\subsubsection{Kỹ thuật 1: Threading để tách biệt capture và xử lý}
+\label{subsubsec:rt_threading}
+
+Bằng cách chạy capture trong một luồng riêng, CPU không phải chờ \texttt{cap.read()} hoàn thành trước khi bắt đầu xử lý frame tiếp theo:
+
+\begin{minted}[breaklines=true, fontsize=\small]{python}
+import threading
+
+class CameraCapture:
+    """Capture frame trong luong nen, giam do tre do I/O."""
+    def __init__(self, src=0):
+        self.cap = cv2.VideoCapture(src)
+        self.frame = None
+        self.running = True
+        self.thread = threading.Thread(target=self._update, daemon=True)
+        self.thread.start()
+
+    def _update(self):
+        while self.running:
+            ret, frame = self.cap.read()
+            if ret:
+                self.frame = frame
+
+    def read(self):
+        return self.frame
+
+    def stop(self):
+        self.running = False
+        self.cap.release()
+
+# Su dung
+camera = CameraCapture(0)
+import time; time.sleep(1)  # Cho camera khoi dong
+
+while True:
+    frame = camera.read()
+    if frame is None:
+        continue
+    # ... xu ly frame ...
+\end{minted}
+
+\subsubsection{Kỹ thuật 2: Frame skipping cho tác vụ nặng}
+\label{subsubsec:rt_frame_skip}
+
+Không phải mọi frame đều cần xử lý đầy đủ. Phát hiện vật thể tốn kém hơn phân loại, nên có thể chạy nó ít thường xuyên hơn:
+
+\begin{minted}[breaklines=true, fontsize=\small]{python}
+frame_count = 0
+last_det_result = None  # Luu ket qua detection cuoi
+
+while True:
+    frame = camera.read()
+    if frame is None:
+        continue
+
+    frame_count += 1
+
+    # Chi chay YOLO detection moi 3 frame (giam 67% tai toan tinh)
+    if frame_count % 3 == 0:
+        last_det_result = detector(frame, conf=0.5, verbose=False)[0]
+
+    # Phan loai chay moi frame (nhe hon)
+    tensor = transform(cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)).unsqueeze(0).to(device)
+    with torch.no_grad():
+        out = classifier(tensor)
+
+    # Dung ket qua detection cuoi neu chua co ket qua moi
+    if last_det_result is not None:
+        annotated = last_det_result.plot()
+    else:
+        annotated = frame.copy()
+\end{minted}
+
+\subsubsection{Kỹ thuật 3: Giảm độ phân giải đầu vào cho detector}
+\label{subsubsec:rt_resolution}
+
+YOLO mặc định resize ảnh về 640px. Với webcam, bạn có thể giảm xuống 320px để tăng tốc đáng kể mà chỉ mất một ít độ chính xác với vật thể nhỏ:
+
+\begin{minted}[breaklines=true, fontsize=\small]{python}
+# Giam imgsz tu 640 xuong 320: nhanh hon ~2x, mat mot it do chinh xac
+results = detector(frame, imgsz=320, conf=0.5, verbose=False)
+\end{minted}
+
+\begin{mdframed}[style=infobox]
+\textbf{Bảng đánh đổi tốc độ vs chất lượng}
+
+\begin{itemize}
+    \item \textbf{GPU RTX 3060 + YOLOv8n + 640px:} ~60 FPS; tốt cho hầu hết usecase.
+    \item \textbf{GPU RTX 3060 + YOLOv8s + 640px:} ~40 FPS; cân bằng tốt.
+    \item \textbf{CPU (i7) + YOLOv8n + 320px:} ~12--15 FPS; dùng được cho demo.
+    \item \textbf{Raspberry Pi 4 + YOLOv8n + 320px:} ~3--5 FPS; cần tối ưu thêm.
+\end{itemize}
+
+Nếu triển khai trên thiết bị nhúng, hãy xem xét xuất ONNX và dùng ONNX Runtime với backend tối ưu phần cứng (CoreML trên Apple, TFLite trên ARM, TensorRT trên Jetson).
+\end{mdframed}

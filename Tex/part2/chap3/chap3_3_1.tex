@@ -1,3 +1,254 @@
-% part2 - chap3 - Section 3.1
-\section*{Section 3.1}
+\section{Tối ưu hóa Mô hình cho Suy luận (Inference)}
+\label{sec:model_optimization}
 
+Huấn luyện và suy luận là hai giai đoạn hoàn toàn khác nhau của vòng đời mô hình, với những ưu tiên đối lập nhau. Trong huấn luyện, ta sẵn sàng chờ đợi hàng giờ hay hàng ngày để đổi lấy độ chính xác cao hơn. Trong suy luận, người dùng chờ đợi kết quả trong vài chục mili giây và không quan tâm đến câu chuyện phía sau. Mô hình FP32 nặng 500MB chạy hoàn hảo trên máy trạm A100 của nhóm nghiên cứu có thể hoàn toàn không khả thi khi triển khai trên máy chủ chi phí thấp hay thiết bị di động. Tối ưu hóa mô hình cho suy luận là cầu nối giữa hai thế giới đó.
+
+\subsection{Lượng tử hóa (Quantization) và Cắt tỉa (Pruning)}
+\label{subsec:quantization_pruning}
+
+Lượng tử hóa là quá trình giảm độ chính xác số học của các tham số mô hình---thông thường từ số thực dấu phẩy động 32-bit (FP32) xuống số nguyên 8-bit (INT8) hoặc số thực 16-bit (FP16/BF16). Ý tưởng cốt lõi là phần lớn thông tin trong trọng số mạng nơ-ron không đòi hỏi độ chính xác cao để hoạt động tốt. Giảm từ FP32 xuống INT8 có thể thu nhỏ mô hình xuống 4 lần và tăng tốc suy luận đáng kể, đặc biệt trên phần cứng hỗ trợ tính toán số nguyên tối ưu.
+
+PyTorch cung cấp hai phương pháp lượng tử hóa chính. \textbf{Dynamic quantization} là phương pháp đơn giản nhất---trọng số được lượng tử hóa tĩnh, nhưng giá trị kích hoạt được lượng tử hóa động trong lúc chạy. Phương pháp này đặc biệt hiệu quả cho các lớp tuyến tính và LSTM:
+
+\begin{minted}[breaklines=true, fontsize=\small]{python}
+import torch
+import os
+from torch.quantization import quantize_dynamic
+
+# Dynamic quantization (dễ dùng, hiệu quả cho Linear/LSTM)
+model_int8 = quantize_dynamic(model, {torch.nn.Linear}, dtype=torch.qint8)
+
+# Lưu cả hai phiên bản để so sánh
+torch.save(model.state_dict(), "model_fp32.pth")
+torch.save(model_int8.state_dict(), "model_int8.pth")
+
+# So sánh kích thước
+print(f"FP32 model: {os.path.getsize('model_fp32.pth')/1e6:.1f} MB")
+print(f"INT8 model: {os.path.getsize('model_int8.pth')/1e6:.1f} MB")
+\end{minted}
+
+\textbf{Static quantization} cho độ chính xác cao hơn nhưng yêu cầu thêm bước hiệu chuẩn (calibration) với tập dữ liệu đại diện. Quá trình này cho phép framework quan sát phân phối thực tế của các giá trị kích hoạt và chọn tham số lượng tử hóa tối ưu:
+
+\begin{minted}[breaklines=true, fontsize=\small]{python}
+from torch.quantization import prepare, convert, get_default_qconfig
+
+# Thiết lập cấu hình lượng tử hóa (fbgemm cho x86, qnnpack cho ARM)
+model.qconfig = get_default_qconfig("fbgemm")  # cho CPU x86
+model_prepared = prepare(model, inplace=False)
+
+# Hiệu chuẩn với dữ liệu đại diện (100-1000 ảnh là đủ)
+model_prepared.eval()
+with torch.no_grad():
+    for images, _ in calibration_loader:
+        model_prepared(images)
+
+# Chuyển đổi sang mô hình lượng tử hóa
+model_quantized = convert(model_prepared, inplace=False)
+\end{minted}
+
+\begin{mdframed}[style=infobox]
+\textbf{Lưu ý khi chọn backend lượng tử hóa:} Dùng \texttt{fbgemm} khi triển khai trên máy chủ x86 (Intel/AMD), và \texttt{qnnpack} khi nhắm đến thiết bị ARM (Android, Raspberry Pi). Trên GPU NVIDIA, FP16 thường là lựa chọn ưu tiên thay vì INT8 vì Tensor Cores hỗ trợ FP16 rất hiệu quả.
+\end{mdframed}
+
+\textbf{Cắt tỉa (Pruning)} là kỹ thuật bổ sung cho lượng tử hóa, hoạt động theo nguyên lý khác: thay vì giảm độ chính xác số học, pruning loại bỏ hẳn các trọng số có giá trị nhỏ (gần bằng 0) mà đóng góp ít vào kết quả đầu ra. Điều này tạo ra các ma trận thưa (sparse), có thể được tính toán hiệu quả hơn với phần cứng phù hợp.
+
+PyTorch cung cấp module \texttt{torch.nn.utils.prune} để áp dụng pruning có cấu trúc và không cấu trúc:
+
+\begin{minted}[breaklines=true, fontsize=\small]{python}
+import torch.nn.utils.prune as prune
+
+# Cắt tỉa 30% trọng số nhỏ nhất trong tất cả các lớp Conv2d
+for name, module in model.named_modules():
+    if isinstance(module, torch.nn.Conv2d):
+        prune.l1_unstructured(module, name="weight", amount=0.3)
+
+# Pruning ban đầu chỉ tạo mask, không xóa thực sự
+# Để lưu mô hình gọn hơn, cần "đóng gói" kết quả pruning
+for name, module in model.named_modules():
+    if isinstance(module, torch.nn.Conv2d):
+        prune.remove(module, "weight")
+
+# Kiểm tra tỷ lệ thưa sau khi pruning
+def check_sparsity(model):
+    total = sum(p.numel() for p in model.parameters())
+    zeros = sum((p == 0).sum().item() for p in model.parameters())
+    return zeros / total
+
+print(f"Sparsity: {check_sparsity(model):.2%}")
+\end{minted}
+
+Trong thực tế, pruning thường được kết hợp với fine-tuning sau đó---cắt tỉa làm giảm nhẹ độ chính xác, và một vài epoch huấn luyện thêm cho phép mô hình hồi phục lại mức hiệu suất ban đầu.
+
+\subsection{Chuyển đổi sang ONNX và TensorRT}
+\label{subsec:onnx_tensorrt}
+
+ONNX (Open Neural Network Exchange) là định dạng trung gian chuẩn mở cho phép chuyển mô hình giữa các framework khác nhau. Thay vì bị khóa chặt trong PyTorch hay TensorFlow, một mô hình ONNX có thể chạy trên bất kỳ runtime nào hỗ trợ chuẩn này---từ ONNX Runtime tối ưu cho CPU đến TensorRT tối ưu cho GPU NVIDIA.
+
+Xuất mô hình PyTorch sang ONNX đòi hỏi truyền qua một lần với dữ liệu giả để ghi lại đồ thị tính toán:
+
+\begin{minted}[breaklines=true, fontsize=\small]{python}
+import torch
+import onnx
+import onnxruntime as ort
+
+# Đầu vào giả để trace đồ thị tính toán
+dummy_input = torch.randn(1, 3, 224, 224).to(device)
+
+torch.onnx.export(
+    model,
+    dummy_input,
+    "model.onnx",
+    export_params=True,       # bao gồm trọng số trong file
+    opset_version=17,         # phiên bản ONNX opset
+    input_names=["input"],
+    output_names=["output"],
+    dynamic_axes={            # cho phép batch size thay đổi linh hoạt
+        "input": {0: "batch_size"},
+        "output": {0: "batch_size"},
+    },
+)
+
+# Xác minh file ONNX hợp lệ
+onnx_model = onnx.load("model.onnx")
+onnx.checker.check_model(onnx_model)
+print("ONNX model is valid!")
+
+# Suy luận với ONNX Runtime
+sess_options = ort.SessionOptions()
+sess_options.graph_optimization_level = ort.GraphOptimizationLevel.ORT_ENABLE_ALL
+sess = ort.InferenceSession(
+    "model.onnx",
+    sess_options,
+    providers=["CUDAExecutionProvider", "CPUExecutionProvider"],
+)
+
+# Chạy suy luận
+image_np = dummy_input.numpy()
+outputs = sess.run(None, {"input": image_np})
+\end{minted}
+
+TensorRT là bước tối ưu hóa tiếp theo dành riêng cho phần cứng NVIDIA. Nó thực hiện hàng loạt biến đổi đồ thị tính toán---hợp nhất các phép toán, tối ưu hóa bộ nhớ, lựa chọn kernel tối ưu cho GPU cụ thể---để đạt throughput và latency tốt nhất. Công cụ \texttt{trtexec} của TensorRT cho phép chuyển đổi trực tiếp từ ONNX:
+
+\begin{minted}[breaklines=true, fontsize=\small]{bash}
+# Chuyển đổi ONNX sang TensorRT engine với FP16
+trtexec \
+    --onnx=model.onnx \
+    --saveEngine=model_fp16.trt \
+    --fp16 \
+    --workspace=4096 \
+    --minShapes=input:1x3x224x224 \
+    --optShapes=input:8x3x224x224 \
+    --maxShapes=input:32x3x224x224
+\end{minted}
+
+Lưu ý rằng TensorRT engine được tối ưu hóa cho GPU cụ thể nơi nó được tạo ra---một engine tạo trên A100 không thể chạy trên T4. Khi triển khai trên phần cứng khác nhau, cần tạo lại engine. Sau khi có engine, suy luận trong Python được thực hiện thông qua API C++/Python của TensorRT:
+
+\begin{minted}[breaklines=true, fontsize=\small]{python}
+import tensorrt as trt
+import pycuda.driver as cuda
+import pycuda.autoinit
+import numpy as np
+
+def load_engine(engine_path):
+    with open(engine_path, "rb") as f:
+        runtime = trt.Runtime(trt.Logger(trt.Logger.WARNING))
+        return runtime.deserialize_cuda_engine(f.read())
+
+engine = load_engine("model_fp16.trt")
+context = engine.create_execution_context()
+
+# Cấp phát bộ nhớ GPU cho input/output
+input_shape = (1, 3, 224, 224)
+output_shape = (1, 1000)
+d_input = cuda.mem_alloc(np.zeros(input_shape, dtype=np.float16).nbytes)
+d_output = cuda.mem_alloc(np.zeros(output_shape, dtype=np.float16).nbytes)
+bindings = [int(d_input), int(d_output)]
+
+# Sao chép dữ liệu lên GPU và chạy suy luận
+h_input = np.random.randn(*input_shape).astype(np.float16)
+cuda.memcpy_htod(d_input, h_input)
+context.execute_v2(bindings)
+h_output = np.empty(output_shape, dtype=np.float16)
+cuda.memcpy_dtoh(h_output, d_output)
+\end{minted}
+
+Để có cái nhìn thực tế về mức độ cải thiện hiệu suất, bảng dưới đây tổng hợp kết quả điển hình khi chạy ResNet-50 trên NVIDIA T4 với batch size 1:
+
+\begin{center}
+\begin{tabular}{lccc}
+\hline
+\textbf{Định dạng} & \textbf{Độ trễ (ms)} & \textbf{Throughput (img/s)} & \textbf{Kích thước} \\
+\hline
+PyTorch FP32     & 12.4 & 80   & 98 MB  \\
+ONNX Runtime     & 8.1  & 123  & 98 MB  \\
+TensorRT FP16    & 2.3  & 435  & 49 MB  \\
+TensorRT INT8    & 1.5  & 667  & 25 MB  \\
+\hline
+\end{tabular}
+\end{center}
+
+\subsection{Distillation \& Model Compression cho Foundation Models}
+\label{subsec:distillation}
+
+Khi các foundation model như ViT-L, CLIP hay DINOv2 trở nên phổ biến, một thách thức mới xuất hiện: những mô hình này có độ chính xác vượt trội nhưng quá lớn để triển khai trong môi trường có ràng buộc tài nguyên. Knowledge Distillation (chưng cất kiến thức) là kỹ thuật giải quyết bài toán này bằng cách huấn luyện một mô hình nhỏ (student) bắt chước hành vi của mô hình lớn (teacher), không chỉ học từ nhãn đúng/sai mà còn học từ phân phối xác suất "mềm" mà teacher tạo ra.
+
+Phân phối mềm này chứa đựng nhiều thông tin hơn nhãn cứng. Ví dụ, khi teacher cho biết một ảnh có 60\% khả năng là "chó" và 35\% khả năng là "sói", thông tin về sự tương đồng giữa hai lớp này giúp student học hiệu quả hơn nhiều so với chỉ biết nhãn là "chó". Hàm mất mát kết hợp cả hai thành phần:
+
+\[ \mathcal{L} = \alpha \cdot \mathcal{L}_{CE}(\text{logits}_{student}, \text{labels}) + (1-\alpha) \cdot \mathcal{L}_{KL}(\text{soft}_{student}, \text{soft}_{teacher}) \]
+
+Tham số nhiệt độ $T$ điều chỉnh độ "mềm" của phân phối---giá trị $T$ lớn hơn làm phẳng phân phối, tiết lộ nhiều thông tin hơn về sự tương đồng giữa các lớp:
+
+\begin{minted}[breaklines=true, fontsize=\small]{python}
+import torch
+import torch.nn.functional as F
+
+def distillation_loss(student_logits, teacher_logits, labels,
+                      temperature=4.0, alpha=0.7):
+    """
+    student_logits: đầu ra của mô hình student (chưa qua softmax)
+    teacher_logits: đầu ra của mô hình teacher (chưa qua softmax)
+    labels: nhãn thật (long tensor)
+    temperature: độ mềm của phân phối (thường 3-7)
+    alpha: trọng số của hard loss (thường 0.5-0.9)
+    """
+    # Hard loss: học từ nhãn đúng
+    hard_loss = F.cross_entropy(student_logits, labels)
+
+    # Soft loss: học từ phân phối xác suất của teacher
+    # Chia cho T trước softmax để làm phẳng phân phối
+    student_soft = F.log_softmax(student_logits / temperature, dim=-1)
+    teacher_soft = F.softmax(teacher_logits / temperature, dim=-1)
+    # Nhân T^2 để bù lại gradient bị thu nhỏ khi chia T
+    soft_loss = F.kl_div(student_soft, teacher_soft,
+                         reduction="batchmean") * (temperature ** 2)
+
+    return alpha * hard_loss + (1 - alpha) * soft_loss
+
+
+# Vòng lặp huấn luyện với distillation
+teacher_model.eval()  # teacher không cập nhật gradient
+for images, labels in train_loader:
+    images, labels = images.to(device), labels.to(device)
+
+    # Lấy dự đoán của teacher (không cần gradient)
+    with torch.no_grad():
+        teacher_logits = teacher_model(images)
+
+    # Huấn luyện student
+    student_logits = student_model(images)
+    loss = distillation_loss(student_logits, teacher_logits, labels)
+
+    optimizer.zero_grad()
+    loss.backward()
+    optimizer.step()
+\end{minted}
+
+\begin{mdframed}[style=infobox]
+\textbf{Các mô hình ViT nhỏ gọn đáng chú ý:}
+
+\textbf{TinyViT} (Microsoft, 2022) áp dụng distillation từ ViT lớn để huấn luyện các biến thể nhỏ (5M, 11M, 21M tham số) có thể triển khai trên thiết bị di động với hiệu suất cạnh tranh với MobileNetV3.
+
+\textbf{MobileViT} (Apple, 2021) kết hợp convolution và self-attention trong một kiến trúc nhẹ ($\sim$6M tham số), đạt 78.4\% top-1 trên ImageNet trong khi chỉ cần 600M FLOP---phù hợp cho thiết bị Apple Silicon và Android tầm trung.
+
+\textbf{EfficientViT} (MIT, 2023) tối ưu hóa memory access pattern để đạt throughput cao hơn trên phần cứng thực tế, minh chứng rằng FLOP không phải là thước đo duy nhất của hiệu quả.
+\end{mdframed}

@@ -1,3 +1,24 @@
-% part2 - chap3 introduction
-\chapter*{Chapter 3 Introduction}
+\chapter{TỐI ƯU HÓA, TRIỂN KHAI VÀ VẬN HÀNH (MLOps)}
+\label{chap:p2_mlops}
 
+Có một khoảnh khắc quen thuộc mà hầu hết các kỹ sư học máy đều từng trải qua: mô hình chạy hoàn hảo trên máy tính xách tay, đạt độ chính xác ấn tượng trên tập kiểm tra, nhưng khi được đưa vào môi trường sản xuất thực tế, mọi thứ bắt đầu sụp đổ. Thời gian phản hồi lên đến vài giây, máy chủ hết bộ nhớ khi có nhiều người dùng đồng thời, và không ai biết mô hình đang hoạt động tốt hay không bởi vì không có hệ thống giám sát nào được thiết lập. Đây không phải là thất bại của thuật toán---đây là thất bại của kỹ thuật.
+
+Khoảng cách giữa nghiên cứu và sản xuất trong thị giác máy tính rộng hơn nhiều người nghĩ. Một mô hình ResNet-50 đạt 78\% top-1 accuracy trên ImageNet là một thành tựu học thuật đáng kể. Nhưng để biến nó thành một dịch vụ phục vụ hàng triệu lượt yêu cầu mỗi ngày với độ trễ dưới 50ms, chi phí vận hành hợp lý và khả năng phát hiện khi mô hình bắt đầu hoạt động sai---đó là một bài toán hoàn toàn khác, đòi hỏi một tập kỹ năng hoàn toàn khác.
+
+Đây chính là lý do MLOps ra đời. MLOps---viết tắt của Machine Learning Operations---là tập hợp các thực hành, công cụ và quy trình nhằm rút ngắn khoảng cách đó. Nó vay mượn triết lý từ DevOps truyền thống nhưng mở rộng để xử lý những thách thức đặc thù của hệ thống học máy: dữ liệu thay đổi theo thời gian, mô hình cần được tái huấn luyện định kỳ, và hiệu suất không chỉ được đo bằng throughput mà còn bằng chất lượng dự đoán thực tế.
+
+Chương này đi theo hành trình từ một mô hình đã huấn luyện xong cho đến một hệ thống sản xuất hoàn chỉnh và có thể vận hành được:
+
+\begin{itemize}
+    \item \textbf{Tối ưu hóa mô hình cho suy luận:} Các kỹ thuật lượng tử hóa, cắt tỉa và chưng cất kiến thức để giảm kích thước và tăng tốc độ suy luận mà không hy sinh quá nhiều độ chính xác. Cùng với đó là quy trình chuyển đổi mô hình sang các định dạng tối ưu như ONNX và TensorRT.
+
+    \item \textbf{Đóng gói và phục vụ mô hình:} Xây dựng API suy luận với FastAPI, đóng gói ứng dụng bằng Docker để đảm bảo tính nhất quán giữa môi trường phát triển và sản xuất.
+
+    \item \textbf{Các framework phục vụ chuyên dụng:} Tìm hiểu NVIDIA Triton Inference Server và BentoML---những công cụ được thiết kế riêng để phục vụ mô hình học máy ở quy mô lớn với hiệu suất tối ưu.
+
+    \item \textbf{Vòng đời MLOps:} Xây dựng pipeline CI/CD tự động, theo dõi hiệu suất mô hình trong sản xuất với Prometheus và Grafana, và phát hiện hiện tượng trôi dạt dữ liệu trước khi nó ảnh hưởng đến người dùng cuối.
+
+    \item \textbf{Triển khai trên thiết bị biên và di động:} Đưa mô hình xuống các thiết bị có tài nguyên hạn chế thông qua CoreML cho hệ sinh thái Apple, TensorFlow Lite cho Android, và TensorRT trên NVIDIA Jetson.
+\end{itemize}
+
+Sau khi hoàn thành chương này, bạn sẽ không chỉ biết cách huấn luyện một mô hình tốt---bạn sẽ biết cách đưa nó ra thế giới thực một cách đáng tin cậy, hiệu quả và có thể duy trì lâu dài. Đó là sự khác biệt giữa một nhà nghiên cứu AI và một kỹ sư AI thực chiến.

@@ -1,3 +1,154 @@
-% part2 - chap3 - Section 3.4
-\section*{Section 3.4}
+\section{Vòng đời MLOps cho các ứng dụng CV}
+\label{sec:mlops_lifecycle}
 
+Triển khai mô hình không phải là điểm kết thúc của một dự án---mà là điểm bắt đầu của giai đoạn vận hành, thường kéo dài và đòi hỏi nhiều công sức hơn cả giai đoạn xây dựng ban đầu. Thế giới thực luôn thay đổi: phân phối ảnh đầu vào biến thiên theo mùa và xu hướng, mô hình có thể bắt đầu suy giảm hiệu suất sau vài tháng mà không có dấu hiệu rõ ràng, và bản cập nhật mã nguồn mới cần được kiểm tra tự động trước khi đến tay người dùng. MLOps là tập hợp các thực hành giải quyết những thách thức dài hạn này.
+
+Vòng đời MLOps có thể hình dung như một vòng lặp liên tục: \textbf{Dữ liệu} $\rightarrow$ \textbf{Huấn luyện} $\rightarrow$ \textbf{Đánh giá} $\rightarrow$ \textbf{Triển khai} $\rightarrow$ \textbf{Giám sát} $\rightarrow$ \textbf{Thu thập dữ liệu mới} $\rightarrow$ \textbf{Huấn luyện lại}. Mỗi lần vòng lặp hoàn thành, mô hình trở nên tốt hơn và hệ thống hiểu rõ hơn về dữ liệu thực tế mà nó phải xử lý.
+
+\subsection*{Tự động hóa với CI/CD Pipeline}
+
+Continuous Integration và Continuous Deployment (CI/CD) là xương sống của MLOps hiện đại. Thay vì triển khai thủ công---copy file, SSH vào server, restart service---một pipeline CI/CD tự động kiểm tra chất lượng mô hình và triển khai mỗi khi có thay đổi được đẩy lên repository. GitHub Actions là lựa chọn phổ biến vì tích hợp trực tiếp với GitHub mà không cần hạ tầng bổ sung:
+
+\begin{minted}[breaklines=true, fontsize=\small]{yaml}
+name: CV Model CI/CD
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Run unit tests
+        run: pytest tests/ -v --tb=short
+
+      - name: Check model performance
+        run: python evaluate.py --threshold 0.85
+        # Script này tải mô hình mới nhất, chạy trên test set,
+        # và exit với code 1 nếu accuracy < threshold
+
+  build-and-push:
+    needs: test        # chỉ chạy nếu job test thành công
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main'   # chỉ trên nhánh main
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Log in to Docker Hub
+        uses: docker/login-action@v2
+        with:
+          username: ${{ secrets.DOCKER_USERNAME }}
+          password: ${{ secrets.DOCKER_PASSWORD }}
+
+      - name: Build Docker image
+        run: |
+          docker build -t myrepo/cv-model:${{ github.sha }} .
+          docker tag myrepo/cv-model:${{ github.sha }} myrepo/cv-model:latest
+
+      - name: Push to registry
+        run: docker push myrepo/cv-model:${{ github.sha }}
+\end{minted}
+
+Bước \texttt{evaluate.py} là điểm kiểm soát chất lượng quan trọng---nó ngăn mô hình bị thoái hoá hiệu suất lọt vào sản xuất. Script này nên kiểm tra không chỉ accuracy tổng thể mà còn per-class performance, đặc biệt với các lớp quan trọng trong ứng dụng.
+
+\subsection*{Giám sát Hiệu suất với Prometheus và Grafana}
+
+Sau khi triển khai, câu hỏi quan trọng nhất là: \textit{Mô hình có đang hoạt động đúng không?} Logging truyền thống chỉ ghi lại lỗi và exception. Monitoring ML cần đo đạc thêm các chỉ số đặc thù của model: phân phối confidence score, tỷ lệ dự đoán theo lớp, latency phân vị thứ 95, và các dấu hiệu suy giảm hiệu suất tiềm ẩn.
+
+Prometheus là hệ thống thu thập metrics phổ biến nhất trong hệ sinh thái cloud-native. Thư viện \texttt{prometheus\_client} cho Python giúp instrument dịch vụ FastAPI chỉ với vài dòng code:
+
+\begin{minted}[breaklines=true, fontsize=\small]{python}
+from prometheus_client import Counter, Histogram, start_http_server
+import time
+
+# Định nghĩa các metric cần theo dõi
+REQUEST_COUNT = Counter(
+    "cv_api_requests_total",
+    "Tong so yeu cau API",
+    ["endpoint", "status"]    # labels để lọc trong dashboard
+)
+INFERENCE_LATENCY = Histogram(
+    "cv_inference_duration_seconds",
+    "Do tre suy luan theo giay",
+    buckets=[0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1.0, 2.5]
+)
+CONFIDENCE_HISTOGRAM = Histogram(
+    "cv_prediction_confidence",
+    "Phan phoi confidence cua du doan",
+    buckets=[0.5, 0.6, 0.7, 0.8, 0.9, 0.95, 1.0]
+)
+
+# Khởi động HTTP server cho Prometheus scrape trên port 9090
+start_http_server(9090)
+
+
+@app.post("/predict")
+async def predict(file: UploadFile):
+    start_time = time.time()
+    try:
+        result = await run_inference(file)
+        REQUEST_COUNT.labels(endpoint="/predict", status="success").inc()
+        CONFIDENCE_HISTOGRAM.observe(result["confidence"])
+        return result
+    except Exception as e:
+        REQUEST_COUNT.labels(endpoint="/predict", status="error").inc()
+        raise
+    finally:
+        # Ghi latency dù thành công hay thất bại
+        INFERENCE_LATENCY.observe(time.time() - start_time)
+\end{minted}
+
+Grafana kết nối với Prometheus như một data source và cung cấp giao diện dashboard trực quan. Các panel quan trọng cần có trong dashboard CV service: biểu đồ RPS (Requests Per Second), histogram phân phối latency, confidence score trung bình theo thời gian, và tỷ lệ lỗi. Khi confidence score trung bình bắt đầu giảm theo thời gian mà không có thay đổi mã nguồn, đó thường là dấu hiệu đầu tiên của data drift.
+
+\subsection*{Phát hiện Data Drift}
+
+Data drift xảy ra khi phân phối dữ liệu đầu vào thực tế bắt đầu khác xa phân phối của tập huấn luyện. Ví dụ, một mô hình nhận dạng sản phẩm được huấn luyện với ảnh chụp trong studio sẽ gặp khó khăn khi người dùng bắt đầu gửi ảnh chụp ngoài trời. Thư viện \texttt{evidently} cung cấp bộ công cụ phân tích và báo cáo data drift chuyên nghiệp:
+
+\begin{minted}[breaklines=true, fontsize=\small]{python}
+from evidently.report import Report
+from evidently.metric_preset import DataDriftPreset, DataQualityPreset
+import pandas as pd
+
+# reference_df: đặc trưng trích xuất từ tập huấn luyện (baseline)
+# current_df: đặc trưng trích xuất từ dữ liệu sản xuất tuần vừa qua
+report = Report(metrics=[
+    DataDriftPreset(),
+    DataQualityPreset(),
+])
+
+report.run(reference_data=reference_df, current_data=current_df)
+report.save_html("data_drift_report.html")
+
+# Kiểm tra lập trình (dùng trong CI/CD)
+result = report.as_dict()
+drift_detected = result["metrics"][0]["result"]["dataset_drift"]
+if drift_detected:
+    print("CANH BAO: Phat hien data drift! Can kiem tra va huan luyen lai.")
+\end{minted}
+
+Trong thực tế, đặc trưng được so sánh thường là các embedding vector từ lớp trước lớp cuối của mô hình---chúng đại diện cho không gian đặc trưng mà mô hình đã học, và sự thay đổi trong phân phối của chúng phản ánh trực tiếp sự thay đổi trong dữ liệu đầu vào.
+
+\begin{mdframed}[style=infobox]
+\textbf{Khi nào cần huấn luyện lại mô hình?}
+
+\textbf{Dựa trên hiệu suất:} Accuracy trên tập validation giảm xuống dưới ngưỡng đã định (ví dụ: $< 85\%$), hoặc các chỉ số business (tỷ lệ chấp nhận của người dùng, số lần phải kiểm tra lại thủ công) suy giảm đáng kể.
+
+\textbf{Dựa trên dữ liệu:} Phát hiện data drift có ý nghĩa thống kê trong phân phối đầu vào; dữ liệu từ categories hoặc điều kiện mới (ví dụ: sản phẩm mới, mùa vụ mới) chưa có trong tập huấn luyện ban đầu.
+
+\textbf{Theo lịch:} Đặt lịch huấn luyện lại định kỳ (hàng tuần hoặc hàng tháng) ngay cả khi chưa phát hiện vấn đề rõ ràng, để mô hình liên tục học từ dữ liệu mới nhất.
+
+\textbf{Sau sự kiện đặc biệt:} Thay đổi sản phẩm, cập nhật giao diện chụp ảnh, hoặc bất kỳ sự kiện nào có thể làm thay đổi đáng kể đặc tính của dữ liệu đầu vào.
+\end{mdframed}

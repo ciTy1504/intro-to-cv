@@ -1,3 +1,245 @@
-% part2 - chap1 - Section 1.4
-\section*{Section 1.4}
+\section{Quản lý Dữ liệu và Phiên bản với DVC}
+\label{sec:dvc}
 
+Trong một dự án phần mềm truyền thống, Git là công cụ quản lý phiên bản hiển nhiên. Nhưng trong dự án học máy, có một vấn đề căn bản: \textbf{Git không được thiết kế để xử lý file lớn}. Một tập dữ liệu ảnh có thể chiếm hàng chục gigabyte, và các file checkpoint mô hình thường nặng từ vài trăm megabyte đến vài gigabyte. Commit những file này trực tiếp vào Git repository sẽ khiến repository phình to nhanh chóng, clone chậm đến mức không thể chịu đựng được, và làm tắc nghẽn toàn bộ quy trình làm việc nhóm.
+
+\textbf{DVC (Data Version Control)} ra đời để giải quyết chính xác vấn đề này. Ý tưởng cốt lõi của DVC rất thanh lịch: Git tiếp tục theo dõi code và cấu hình như thường, nhưng các file dữ liệu lớn được lưu trữ trên \textbf{remote storage} (S3, Google Cloud Storage, Azure Blob, hay thậm chí ổ đĩa cục bộ). DVC chỉ commit vào Git các file \texttt{.dvc} nhỏ gọn---những file này chứa hash của dữ liệu, đóng vai trò như "con trỏ" trỏ đến dữ liệu thực sự trên remote storage. Bằng cách này, bạn có đầy đủ lịch sử phiên bản của dữ liệu mà không làm nặng repository.
+
+\subsection{Cài đặt và khởi tạo DVC}
+\label{subsec:dvc_setup}
+
+Bắt đầu với việc cài đặt DVC cùng với plugin cho provider storage mong muốn:
+
+\begin{minted}[breaklines=true, fontsize=\small]{bash}
+# Cai dat DVC va plugin cho AWS S3
+pip install dvc dvc-s3
+
+# Cai dat plugin cho cac cloud provider khac (tuy chon)
+pip install dvc-gdrive    # Google Drive
+pip install dvc-gs        # Google Cloud Storage
+pip install dvc-azure     # Azure Blob Storage
+
+# Khoi tao Git repository (neu chua co)
+git init
+git add .
+git commit -m "Initial commit"
+
+# Khoi tao DVC trong cung thu muc Git
+dvc init
+
+# DVC tao ra cac file cau hinh, them vao Git
+git add .dvc/config .dvc/.gitignore .dvcignore
+git commit -m "Initialize DVC"
+
+# Cau hinh remote storage (S3)
+dvc remote add -d myremote s3://my-cv-bucket/data
+
+# Hoac dung thu muc cuc bo cho moi truong test
+dvc remote add -d localremote /mnt/data/dvc-storage
+
+# Luu cau hinh vao Git
+git add .dvc/config
+git commit -m "Configure DVC remote storage"
+\end{minted}
+
+\subsection{Thêm dữ liệu vào DVC}
+\label{subsec:dvc_add_data}
+
+Thao tác cơ bản nhất của DVC là \texttt{dvc add}---lệnh này di chuyển file/thư mục vào cache của DVC và tạo file \texttt{.dvc} tương ứng để Git theo dõi:
+
+\begin{minted}[breaklines=true, fontsize=\small]{bash}
+# Them toan bo thu muc data/raw/ vao DVC tracking
+dvc add data/raw/
+
+# DVC tao ra file data/raw.dvc chua hash cua du lieu
+# Va them data/raw/ vao .gitignore tu dong
+cat data/raw.dvc
+
+# Commit file .dvc (nho, chi chua metadata) vao Git
+git add data/raw.dvc .gitignore
+git commit -m "Add raw dataset v1.0 (500 dog images)"
+
+# Day du lieu thuc su len remote storage
+dvc push
+
+# Luong cong viec khi cap nhat du lieu (them 200 anh moi):
+# 1. Them anh moi vao data/raw/
+# 2. Chay lai dvc add de cap nhat hash
+dvc add data/raw/
+
+# 3. Commit phien ban du lieu moi
+git add data/raw.dvc
+git commit -m "Add 200 more dog images - total 700 samples"
+
+# 4. Day phien ban moi len remote
+dvc push
+\end{minted}
+
+\subsection{Khôi phục dữ liệu trên máy mới}
+\label{subsec:dvc_pull}
+
+Đây là luồng công việc khi một thành viên mới tham gia dự án hoặc khi triển khai lên server mới. Họ chỉ cần clone Git repository (nhỏ gọn, không có dữ liệu) rồi dùng \texttt{dvc pull} để tải dữ liệu về:
+
+\begin{minted}[breaklines=true, fontsize=\small]{bash}
+# Tren may moi / server moi
+git clone https://github.com/myproject/cv-project.git
+cd cv-project
+
+# Tai du lieu tuong ung voi commit hien tai
+dvc pull
+
+# Hoac chi tai mot file/thu muc cu the
+dvc pull data/raw.dvc
+
+# Checkout phien ban cu cua du lieu (ket hop voi git checkout)
+git checkout v1.0-experiment
+dvc checkout
+
+# Hien tai thu muc data/ se chua du lieu cua phien ban v1.0
+\end{minted}
+
+\subsection{DVC Pipelines: Tái lập hoàn toàn thực nghiệm}
+\label{subsec:dvc_pipelines}
+
+Tính năng mạnh mẽ nhất của DVC là khả năng định nghĩa \textbf{pipeline}---một đồ thị các bước xử lý có phụ thuộc rõ ràng. DVC theo dõi input, output và tham số của từng bước, chỉ chạy lại những bước có thay đổi. Pipeline được định nghĩa trong file \texttt{dvc.yaml}:
+
+\begin{minted}[breaklines=true, fontsize=\small]{yaml}
+stages:
+  # Buoc 1: Tien xu ly du lieu thu
+  preprocess:
+    cmd: python src/preprocess.py
+    deps:
+      - src/preprocess.py
+      - data/raw/
+    outs:
+      - data/processed/
+    params:
+      - configs/train.yaml:
+        - preprocess.image_size
+        - preprocess.normalize
+
+  # Buoc 2: Huan luyen mo hinh
+  train:
+    cmd: python src/train.py --config configs/train.yaml
+    deps:
+      - src/train.py
+      - data/processed/
+      - configs/train.yaml
+    outs:
+      - models/best.pth
+    metrics:
+      - metrics/train_metrics.json:
+          cache: false  # metrics khong can cache trong DVC
+
+  # Buoc 3: Danh gia mo hinh
+  evaluate:
+    cmd: python src/evaluate.py
+    deps:
+      - src/evaluate.py
+      - models/best.pth
+      - data/processed/
+    metrics:
+      - metrics/eval_metrics.json:
+          cache: false
+\end{minted}
+
+Chạy toàn bộ pipeline chỉ bằng một lệnh:
+
+\begin{minted}[breaklines=true, fontsize=\small]{bash}
+# Chay pipeline (chi chay lai buoc co thay doi)
+dvc repro
+
+# Ep chay lai tat ca cac buoc du khong co thay doi
+dvc repro --force
+
+# Xem bieu do phu thuoc cua pipeline
+dvc dag
+
+# Xem ket qua metrics sau khi chay
+dvc metrics show
+
+# So sanh metrics giua cac commit/experiment khac nhau
+dvc metrics diff HEAD~1
+\end{minted}
+
+\subsection{So sánh DVC và Git LFS}
+\label{subsec:dvc_vs_gitlfs}
+
+\begin{mdframed}[style=infobox]
+    \textbf{DVC so với Git LFS: Nên chọn cái nào?}
+
+    \textbf{Git LFS (Large File Storage)} là giải pháp của GitHub/GitLab để lưu trữ file lớn. Ở cấp độ cơ bản, cả hai đều giải quyết vấn đề "Git không thể lưu file lớn", nhưng triết lý và khả năng rất khác nhau:
+
+    \begin{center}
+    \begin{tabular}{|p{3cm}|p{4.5cm}|p{4.5cm}|}
+    \hline
+    \textbf{Tiêu chí} & \textbf{Git LFS} & \textbf{DVC} \\
+    \hline
+    Tích hợp & Tích hợp sâu vào Git, dùng \texttt{git push/pull} & Lệnh riêng \texttt{dvc push/pull} \\
+    \hline
+    Backend storage & Phụ thuộc hosting (GitHub LFS, Gitea, ...) & S3, GCS, Azure, HDFS, SSH, local, ... \\
+    \hline
+    Chi phí & GitHub LFS tính phí theo dung lượng và băng thông & Chỉ trả tiền cho storage backend \\
+    \hline
+    Pipeline & Không hỗ trợ & Hỗ trợ đầy đủ pipeline và experiment tracking \\
+    \hline
+    Branching dữ liệu & Hỗ trợ (qua Git branch) & Hỗ trợ (qua Git branch + dvc checkout) \\
+    \hline
+    Phù hợp nhất & File nhị phân ít thay đổi (fonts, assets, ...) & Dataset ML, model weights, kết quả thực nghiệm \\
+    \hline
+    \end{tabular}
+    \end{center}
+
+    \textbf{Kết luận:} Với dự án Machine Learning, DVC là lựa chọn vượt trội vì nó được thiết kế cho chính bài toán này. Git LFS chỉ giải quyết phần "lưu trữ file lớn", còn DVC còn thêm khả năng quản lý pipeline, tracking thực nghiệm và tái lập kết quả---những tính năng thiết yếu trong quy trình phát triển mô hình chuyên nghiệp.
+\end{mdframed}
+
+\subsection{Quy trình làm việc hoàn chỉnh với DVC}
+\label{subsec:dvc_full_workflow}
+
+Dưới đây là đoạn script mô tả quy trình làm việc đầy đủ từ khởi tạo dự án đến quản lý thực nghiệm với DVC:
+
+\begin{minted}[breaklines=true, fontsize=\small]{bash}
+# === KHOI TAO DU AN MOI ===
+mkdir cv-project && cd cv-project
+git init
+dvc init
+
+# Cau hinh remote storage
+dvc remote add -d storage s3://my-bucket/cv-project
+
+# Tao cau truc thu muc
+mkdir -p data/{raw,processed,augmented} models metrics configs src
+
+# === THEM DU LIEU ===
+# Copy anh vao data/raw/
+cp -r ~/downloads/dog_images/ data/raw/
+
+dvc add data/raw/
+git add data/raw.dvc .gitignore
+git commit -m "Add initial dataset: 700 dog images"
+dvc push
+
+# === CHAY PIPELINE ===
+# Tao file pipeline dvc.yaml (nhu tren)
+# Chay lan dau - chay tat ca cac buoc
+dvc repro
+
+# Commit ket qua
+git add dvc.lock metrics/
+git commit -m "First training run: ResNet50, lr=1e-3"
+
+# === THI NGHIEM MOI (thay doi hyperparameter) ===
+# Sua configs/train.yaml: learning_rate: 1e-4
+dvc repro
+git add dvc.lock metrics/
+git commit -m "Experiment 2: ResNet50, lr=1e-4"
+
+# So sanh hai thi nghiem
+dvc metrics diff HEAD~1
+
+# Quay lai thi nghiem truoc neu ket qua tot hon
+git checkout HEAD~1
+dvc checkout  # khoi phuc du lieu va model tuong ung
+\end{minted}
+
+Với quy trình này, mọi thực nghiệm đều hoàn toàn tái lập được---bất kỳ ai với quyền truy cập vào Git repository và DVC remote storage đều có thể tái tạo chính xác kết quả bất kỳ thực nghiệm nào trong lịch sử, chỉ bằng cách \texttt{git checkout} đến commit tương ứng rồi chạy \texttt{dvc checkout} và \texttt{dvc repro}. Đây là nền tảng của \textbf{ML reproducibility}---một trong những thách thức lớn nhất của ngành học máy ứng dụng hiện nay.

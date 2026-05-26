@@ -1,0 +1,189 @@
+\section{Recipe 2: Xây dựng Hệ thống Phát hiện Vật thể với YOLO}
+\label{sec:recipe_detection}
+
+Phát hiện vật thể (object detection) là bước tiến từ "ảnh này chứa gì" sang "vật thể đó \textit{ở đâu}". Thay vì một nhãn duy nhất cho toàn bộ ảnh, mô hình phải đồng thời xác định vị trí (bounding box) và danh tính (nhãn lớp) của từng vật thể.
+
+YOLO (You Only Look Once) là họ mô hình detection phổ biến nhất trong thực tế nhờ cân bằng tốt giữa tốc độ và độ chính xác. Phiên bản YOLOv8 của Ultralytics có API Python rất tiện dụng, phù hợp để xây dựng prototype nhanh lẫn hệ thống production.
+
+\subsection{Định dạng nhãn YOLO}
+\label{subsec:yolo_label_format}
+
+Trước khi huấn luyện, dữ liệu phải được chuyển sang định dạng YOLO. Mỗi ảnh tương ứng với một file \texttt{.txt} cùng tên, trong đó mỗi dòng mô tả một vật thể theo cú pháp:
+
+\begin{minted}[breaklines=true, fontsize=\small]{text}
+<class_id> <x_center> <y_center> <width> <height>
+\end{minted}
+
+Tất cả giá trị tọa độ được \textbf{chuẩn hóa về khoảng [0, 1]} theo kích thước ảnh. Ví dụ, một con mèo chiếm nửa trái ảnh:
+
+\begin{minted}[breaklines=true, fontsize=\small]{text}
+0 0.25 0.5 0.5 1.0
+\end{minted}
+
+Cấu trúc thư mục chuẩn mà Ultralytics yêu cầu:
+
+\begin{minted}[breaklines=true, fontsize=\small]{text}
+dataset/
+    images/
+        train/   img001.jpg  img002.jpg  ...
+        val/     img101.jpg  img102.jpg  ...
+    labels/
+        train/   img001.txt  img002.txt  ...
+        val/     img101.txt  img102.txt  ...
+dataset.yaml
+\end{minted}
+
+\subsection{Bước 1: Tạo file cấu hình dataset}
+\label{subsec:yolo_dataset_yaml}
+
+\begin{minted}[breaklines=true, fontsize=\small]{python}
+from ultralytics import YOLO
+import cv2
+from pathlib import Path
+
+# Nội dung file dataset.yaml
+dataset_yaml = """
+path: /path/to/dataset   # Duong dan goc cua dataset
+train: images/train       # Tuong doi so voi path
+val: images/val
+nc: 3                     # So lop
+names: ['cat', 'dog', 'bird']
+"""
+
+with open("dataset.yaml", "w") as f:
+    f.write(dataset_yaml)
+
+print("Da tao dataset.yaml")
+\end{minted}
+
+\subsection{Bước 2: Fine-tune YOLOv8 trên dataset tùy chỉnh}
+\label{subsec:yolo_finetune}
+
+Ultralytics cung cấp 5 biến thể YOLOv8 với các đánh đổi khác nhau giữa tốc độ và độ chính xác:
+
+\begin{table}[h]
+\centering
+\caption{So sánh các biến thể YOLOv8}
+\label{tab:yolov8_variants}
+\begin{tabular}{lcccc}
+\hline
+\textbf{Biến thể} & \textbf{Tham số} & \textbf{mAP50-95} & \textbf{Tốc độ (ms)} & \textbf{Khi nào dùng} \\
+\hline
+YOLOv8n (nano)   & 3.2M   & 37.3 & 1.47  & Edge, mobile, real-time \\
+YOLOv8s (small)  & 11.2M  & 44.9 & 1.89  & Cân bằng tốc độ/chính xác \\
+YOLOv8m (medium) & 25.9M  & 50.2 & 3.97  & Ứng dụng chung trên server \\
+YOLOv8l (large)  & 43.7M  & 52.9 & 6.16  & Khi cần độ chính xác cao \\
+YOLOv8x (xlarge) & 68.2M  & 53.9 & 10.24 & Nghiên cứu, offline batch \\
+\hline
+\end{tabular}
+\end{table}
+
+\begin{minted}[breaklines=true, fontsize=\small]{python}
+# Tai pretrained YOLOv8 nano (nhanh nhat de thu nghiem)
+model = YOLO("yolov8n.pt")
+
+# Fine-tune tren dataset tuy chinh
+results = model.train(
+    data="dataset.yaml",
+    epochs=50,
+    imgsz=640,        # Kich thuoc anh dau vao (vuong)
+    batch=16,
+    lr0=1e-3,         # Learning rate ban dau
+    patience=10,      # Early stopping: dung sau 10 epoch khong cai thien
+    save=True,        # Luu checkpoint
+    project="runs/detect",
+    name="custom_yolo",
+    device=0,         # GPU 0; dung "cpu" neu khong co GPU
+    workers=8,
+    augment=True,     # Bat mosaic, mixup, HSV augmentation cua YOLO
+)
+\end{minted}
+
+\begin{mdframed}[style=infobox]
+\textbf{Mẹo khi fine-tune YOLO}
+
+Ultralytics tự động áp dụng một bộ augmentation phong phú khi \texttt{augment=True}: mosaic (ghép 4 ảnh thành 1), mixup, HSV shift, flip và rotation. Đây là lý do chính YOLOv8 hội tụ nhanh ngay cả với dataset nhỏ. Nếu dataset của bạn có ít hơn 500 ảnh mỗi lớp, hãy tăng \texttt{epochs} lên 100--200 và giảm \texttt{batch} xuống 8 để mô hình có đủ thời gian học các pattern hiếm gặp. Với dataset không cân bằng (một lớp chiếm ưu thế), hãy thêm tham số \texttt{cls=0.5} để giảm trọng số của classification loss.
+\end{mdframed}
+
+\subsection{Bước 3: Đánh giá mô hình}
+\label{subsec:yolo_eval}
+
+\begin{minted}[breaklines=true, fontsize=\small]{python}
+# Danh gia tren tap validation
+# Ultralytics tu dong nap best.pt sau khi train
+metrics = model.val()
+print(f"mAP50:     {metrics.box.map50:.4f}")   # mAP tai nguong IoU=0.5
+print(f"mAP50-95:  {metrics.box.map:.4f}")     # mAP trung binh IoU 0.5:0.95
+print(f"Precision: {metrics.box.mp:.4f}")
+print(f"Recall:    {metrics.box.mr:.4f}")
+\end{minted}
+
+\subsection{Bước 4: Suy luận trên ảnh tĩnh}
+\label{subsec:yolo_image_inference}
+
+\begin{minted}[breaklines=true, fontsize=\small]{python}
+# Nap mo hinh tot nhat tu qua trinh huan luyen
+model = YOLO("runs/detect/custom_yolo/weights/best.pt")
+
+# Suy luan voi nguong confidence 0.5 va IoU NMS 0.45
+results = model("test_image.jpg", conf=0.5, iou=0.45)
+
+for result in results:
+    boxes = result.boxes
+    for box in boxes:
+        x1, y1, x2, y2 = box.xyxy[0].tolist()  # Toa do pixel tuyet doi
+        conf = float(box.conf[0])
+        cls  = int(box.cls[0])
+        print(
+            f"Phat hien: {model.names[cls]} "
+            f"(conf={conf:.2f}) "
+            f"tai [{x1:.0f},{y1:.0f},{x2:.0f},{y2:.0f}]"
+        )
+\end{minted}
+
+\subsection{Bước 5: Suy luận webcam thời gian thực}
+\label{subsec:yolo_webcam}
+
+\begin{minted}[breaklines=true, fontsize=\small]{python}
+cap = cv2.VideoCapture(0)  # 0 = webcam mac dinh
+model = YOLO("runs/detect/custom_yolo/weights/best.pt")
+
+while True:
+    ret, frame = cap.read()
+    if not ret:
+        break
+
+    # stream=True: tra ve generator, tiet kiem bo nho khi xu ly nhieu frame
+    results = model(frame, stream=True, conf=0.5)
+    for result in results:
+        annotated_frame = result.plot()  # Ve bounding box va nhan
+
+    cv2.imshow("YOLO Detection", annotated_frame)
+    if cv2.waitKey(1) & 0xFF == ord("q"):
+        break
+
+cap.release()
+cv2.destroyAllWindows()
+\end{minted}
+
+\subsection{Bước 6: Xuất mô hình sang ONNX để triển khai}
+\label{subsec:yolo_export}
+
+ONNX là định dạng trung gian cho phép triển khai mô hình trên nhiều runtime khác nhau (OpenVINO, TensorRT, ONNX Runtime) mà không phụ thuộc vào PyTorch.
+
+\begin{minted}[breaklines=true, fontsize=\small]{python}
+# Xuat sang ONNX voi dynamic batch size va graph simplification
+model.export(format="onnx", dynamic=True, simplify=True)
+# File duoc luu tai: runs/detect/custom_yolo/weights/best.onnx
+
+# Sau khi xuat, chay inference bang ONNX Runtime
+import onnxruntime as ort
+import numpy as np
+
+session = ort.InferenceSession(
+    "best.onnx",
+    providers=["CUDAExecutionProvider", "CPUExecutionProvider"]
+)
+input_name = session.get_inputs()[0].name
+print(f"ONNX model san sang. Input: {input_name}")
+\end{minted}

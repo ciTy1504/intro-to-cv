@@ -1,3 +1,170 @@
-% part2 - chap3 - Section 3.5
-\section*{Section 3.5}
+\section{Triển khai trên Edge \& Mobile}
+\label{sec:edge_deployment}
 
+Không phải mọi ứng dụng thị giác máy tính đều có thể hoặc nên gửi dữ liệu lên server để xử lý. Một camera an ninh trong nhà máy cần phân tích lỗi sản phẩm ngay lập tức, không thể chờ round-trip network. Một ứng dụng y tế di động ở vùng nông thôn không thể phụ thuộc vào kết nối internet ổn định. Và trong thời đại nhận thức ngày càng cao về quyền riêng tư, người dùng ngày càng không muốn ảnh cá nhân của mình rời khỏi thiết bị.
+
+Ba lý do cốt lõi cho edge deployment là: \textbf{độ trễ thấp} (xử lý cục bộ loại bỏ hoàn toàn network latency), \textbf{quyền riêng tư} (dữ liệu nhạy cảm không rời khỏi thiết bị), và \textbf{hoạt động offline} (không phụ thuộc vào kết nối internet). Đổi lại, thiết bị biên đặt ra những ràng buộc nghiêm ngặt: RAM thường chỉ 2--8 GB và được chia sẻ giữa CPU và GPU, không có GPU rời mạnh, và pin hạn chế yêu cầu mô hình tiết kiệm năng lượng. Điều này đặt ra yêu cầu phải tối ưu hóa mô hình triệt để hơn bất kỳ môi trường nào khác.
+
+\subsection*{CoreML cho hệ sinh thái Apple}
+
+CoreML là framework suy luận của Apple, được tích hợp sâu vào iOS, macOS, watchOS, và tvOS. Điểm mạnh của CoreML nằm ở khả năng tận dụng phần cứng chuyên dụng trên Apple Silicon---Neural Engine (ANE) được thiết kế riêng cho các phép toán ma trận trong mạng nơ-ron, tiêu thụ điện năng ít hơn 10 lần so với GPU trong cùng tác vụ.
+
+Thư viện \texttt{coremltools} cho phép chuyển đổi mô hình PyTorch sang định dạng CoreML thông qua TorchScript:
+
+\begin{minted}[breaklines=true, fontsize=\small]{python}
+import torch
+import coremltools as ct
+
+# Bước 1: Trace mô hình để tạo TorchScript graph
+# model phải ở chế độ eval và trên CPU trước khi trace
+model.eval().cpu()
+traced_model = torch.jit.trace(
+    model,
+    torch.zeros(1, 3, 224, 224)   # đầu vào ví dụ
+)
+
+# Bước 2: Chuyển sang CoreML với tiền xử lý ảnh tích hợp
+# scale và bias chuẩn hóa ảnh từ [0,255] về [-1,1]
+coreml_model = ct.convert(
+    traced_model,
+    inputs=[ct.ImageType(
+        name="input",
+        shape=(1, 3, 224, 224),
+        bias=[-1.0, -1.0, -1.0],
+        scale=1 / 127.5,
+    )],
+    classifier_config=ct.ClassifierConfig(class_labels),
+    compute_precision=ct.precision.FLOAT16,   # tối ưu cho ANE
+)
+
+# Thêm metadata hữu ích cho Xcode
+coreml_model.short_description = "ResNet-50 image classifier"
+coreml_model.author = "My Team"
+coreml_model.version = "1.0"
+
+coreml_model.save("CVModel.mlmodel")
+\end{minted}
+
+File \texttt{.mlmodel} sau đó được kéo thả vào project Xcode---Xcode sẽ tự động sinh Swift interface, giúp tích hợp vào ứng dụng iOS chỉ với vài dòng Swift.
+
+\subsection*{TensorFlow Lite cho Android và Embedded}
+
+TensorFlow Lite (TFLite) là runtime suy luận nhẹ của Google, hỗ trợ Android, iOS, Linux embedded, và vi điều khiển. TFLite đặc biệt phổ biến trên Android và các board như Raspberry Pi vì hỗ trợ rộng rãi và cộng đồng lớn.
+
+Chuyển đổi mô hình Keras sang TFLite với INT8 quantization để đạt hiệu suất tối đa:
+
+\begin{minted}[breaklines=true, fontsize=\small]{python}
+import tensorflow as tf
+
+def representative_data_gen():
+    """Hàm sinh dữ liệu hiệu chuẩn cho INT8 quantization."""
+    for images, _ in calibration_dataset.take(100):
+        yield [images]
+
+# Tạo converter từ mô hình Keras đã huấn luyện
+converter = tf.lite.TFLiteConverter.from_keras_model(keras_model)
+
+# Kích hoạt quantization
+converter.optimizations = [tf.lite.Optimize.DEFAULT]
+converter.representative_dataset = representative_data_gen
+
+# Full integer quantization: cả weights lẫn activations đều INT8
+converter.target_spec.supported_ops = [tf.lite.OpsSet.TFLITE_BUILTINS_INT8]
+converter.inference_input_type = tf.int8
+converter.inference_output_type = tf.int8
+
+tflite_model = converter.convert()
+
+with open("model_quantized.tflite", "wb") as f:
+    f.write(tflite_model)
+
+print(f"Kich thuoc: {len(tflite_model) / 1e6:.1f} MB")
+\end{minted}
+
+Suy luận với TFLite interpreter trong Python (logic tương tự trong Java/Kotlin cho Android):
+
+\begin{minted}[breaklines=true, fontsize=\small]{python}
+import tensorflow as tf
+import numpy as np
+
+# Khởi tạo interpreter
+interpreter = tf.lite.Interpreter(model_path="model_quantized.tflite")
+interpreter.allocate_tensors()
+
+# Lấy thông tin về input/output tensors
+input_details = interpreter.get_input_details()
+output_details = interpreter.get_output_details()
+
+# Kiểm tra kiểu dữ liệu input (INT8 cần scale và zero_point)
+print(f"Input dtype: {input_details[0]['dtype']}")
+print(f"Input shape: {input_details[0]['shape']}")
+
+# Tiền xử lý ảnh sang INT8
+input_scale, input_zero_point = input_details[0]["quantization"]
+input_data = (image_array / input_scale + input_zero_point).astype(np.int8)
+
+# Chạy suy luận
+interpreter.set_tensor(input_details[0]["index"], input_data)
+interpreter.invoke()
+output = interpreter.get_tensor(output_details[0]["index"])
+
+# Giải mã output INT8 sang xác suất thực
+output_scale, output_zero_point = output_details[0]["quantization"]
+probabilities = (output.astype(np.float32) - output_zero_point) * output_scale
+\end{minted}
+
+\subsection*{NVIDIA Jetson cho Edge AI với GPU}
+
+Dòng thiết bị NVIDIA Jetson (Nano, Xavier NX, Orin) là ngoại lệ đặc biệt trong thế giới edge---chúng có GPU thực sự nhưng trong gói nhỏ gọn tiêu thụ 5--60W. Jetson là lựa chọn phổ biến cho robot, drone, camera thông minh công nghiệp. Trên Jetson, TensorRT là con đường tối ưu nhất:
+
+\begin{minted}[breaklines=true, fontsize=\small]{bash}
+# Chuyển đổi sang TensorRT engine với INT8 trên Jetson Orin
+/usr/src/tensorrt/bin/trtexec \
+    --onnx=model.onnx \
+    --saveEngine=model_jetson.trt \
+    --int8 \
+    --calib=calibration_cache.bin \
+    --workspace=1024
+
+# Benchmark để đo throughput thực tế
+/usr/src/tensorrt/bin/trtexec \
+    --loadEngine=model_jetson.trt \
+    --batch=4 \
+    --iterations=100
+\end{minted}
+
+TensorRT trên Jetson tận dụng Tensor Cores của GPU Ampere/Volta, đạt throughput ấn tượng so với kích thước thiết bị.
+
+\subsection*{So sánh Các Phương pháp Triển khai}
+
+Bảng dưới đây tổng hợp kết quả điển hình khi triển khai MobileNetV3-Large (phân loại 1000 lớp) trên các nền tảng khác nhau:
+
+\begin{center}
+\begin{tabular}{lcccc}
+\hline
+\textbf{Định dạng} & \textbf{Nền tảng} & \textbf{Kích thước} & \textbf{Latency} & \textbf{Accuracy} \\
+\hline
+PyTorch FP32  & x86 server    & 21 MB  & 28 ms  & 75.2\% \\
+ONNX FP32     & x86 server    & 21 MB  & 18 ms  & 75.2\% \\
+TRT FP16      & NVIDIA T4     & 11 MB  & 3 ms   & 75.0\% \\
+TRT INT8      & NVIDIA T4     & 6 MB   & 1.8 ms & 74.6\% \\
+TFLite FP32   & ARM (Pi 4)    & 16 MB  & 320 ms & 75.2\% \\
+TFLite INT8   & ARM (Pi 4)    & 5 MB   & 95 ms  & 74.3\% \\
+CoreML FP16   & Apple M2      & 11 MB  & 4 ms   & 75.0\% \\
+\hline
+\end{tabular}
+\end{center}
+
+\begin{mdframed}[style=infobox]
+\textbf{ONNX: định dạng trung gian toàn năng}
+
+Trong hành trình triển khai cross-platform, ONNX đóng vai trò như một \textit{lingua franca} của các mô hình học máy. Thay vì phải viết code chuyển đổi riêng cho từng cặp (framework nguồn, runtime đích), quy trình chuẩn hiện nay là:
+
+\[
+\text{PyTorch/TF/JAX} \xrightarrow{\text{export}} \text{ONNX} \xrightarrow{\text{convert}} \text{TRT/CoreML/TFLite/OpenVINO}
+\]
+
+Điều này không chỉ tiết kiệm công sức mà còn đảm bảo tính nhất quán: một lần export và xác minh từ PyTorch sang ONNX, sau đó mỗi runtime chỉ cần xử lý bước chuyển đổi ONNX $\rightarrow$ format của mình---những bước này thường được các nhà sản xuất phần cứng hỗ trợ và kiểm tra kỹ lưỡng.
+
+Công cụ \texttt{onnxsim} (ONNX Simplifier) là bước nên thêm vào giữa pipeline để loại bỏ các node dư thừa trong đồ thị ONNX, giúp cải thiện độ tương thích và tốc độ chuyển đổi sang các runtime downstream.
+\end{mdframed}

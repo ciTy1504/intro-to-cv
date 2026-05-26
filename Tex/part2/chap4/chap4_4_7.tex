@@ -1,3 +1,235 @@
-% part2 - chap4 - Section 4.7
-\section*{Section 4.7}
+\section{Recipe 7: Ứng dụng Tìm kiếm Đa phương thức với CLIP}
+\label{sec:recipe_clip_search}
 
+Tìm kiếm đa phương thức (multimodal search) cho phép người dùng tìm kiếm ảnh bằng văn bản ("tìm ảnh có chó chơi trong công viên") hoặc bằng ảnh mẫu ("tìm ảnh trông giống ảnh này"). CLIP của OpenAI là nền tảng lý tưởng cho bài toán này vì nó mã hóa văn bản và ảnh vào cùng một không gian vector, cho phép so sánh trực tiếp. FAISS của Meta cung cấp tìm kiếm láng giềng gần nhất cực kỳ nhanh trên bộ sưu tập lớn.
+
+\subsection{Nguyên lý hoạt động}
+\label{subsec:clip_principle}
+
+Ý tưởng cốt lõi rất đơn giản: CLIP được huấn luyện để mã hóa ảnh và mô tả văn bản của nó vào các vector có độ tương đồng cao (cosine similarity gần 1). Vì vậy:
+
+\begin{itemize}
+    \item Vector của ảnh "con chó đang chạy" gần với vector của câu "a dog running in a field".
+    \item Hai ảnh trông giống nhau có vector gần nhau trong không gian embedding.
+\end{itemize}
+
+Hệ thống tìm kiếm gồm hai pha: \textbf{indexing} (mã hóa tất cả ảnh thành vector một lần) và \textbf{search} (mã hóa query và tìm vector gần nhất trong index).
+
+\subsection{Bước 1: Xây dựng chỉ mục ảnh (Indexing)}
+\label{subsec:clip_indexing}
+
+\begin{minted}[breaklines=true, fontsize=\small]{python}
+import torch
+import clip
+from PIL import Image
+import numpy as np
+from pathlib import Path
+import faiss
+import pickle
+
+device = "cuda" if torch.cuda.is_available() else "cpu"
+model, preprocess = clip.load("ViT-B/32", device=device)
+
+def build_image_index(image_dir: str, index_file: str):
+    """
+    Ma hoa toan bo anh trong thu muc va luu vao FAISS index.
+    Chi can chay mot lan; ket qua duoc tai su dung cho moi lan tim kiem.
+    """
+    image_paths = (
+        list(Path(image_dir).glob("**/*.jpg"))
+        + list(Path(image_dir).glob("**/*.png"))
+        + list(Path(image_dir).glob("**/*.jpeg"))
+    )
+    print(f"Tim thay {len(image_paths)} anh")
+
+    embeddings = []
+    valid_paths = []
+
+    model.eval()
+    with torch.no_grad():
+        # Xu ly theo batch de tan dung GPU hieu qua
+        batch_size = 32
+        for i in range(0, len(image_paths), batch_size):
+            batch_paths = image_paths[i : i + batch_size]
+            # Nap va preprocess tung anh trong batch
+            images = []
+            for p in batch_paths:
+                try:
+                    img = preprocess(Image.open(p).convert("RGB"))
+                    images.append(img)
+                    valid_paths.append(p)
+                except Exception as e:
+                    print(f"Bo qua {p}: {e}")
+                    continue
+
+            if not images:
+                continue
+
+            batch_tensor = torch.stack(images).to(device)
+            feats = model.encode_image(batch_tensor)
+            # Chuan hoa L2: ket qua la unit vector, dot product = cosine similarity
+            feats = feats / feats.norm(dim=-1, keepdim=True)
+            embeddings.append(feats.cpu().numpy())
+
+            if (i // batch_size) % 10 == 0:
+                print(f"  Da xu ly {len(valid_paths)}/{len(image_paths)} anh")
+
+    all_embeddings = np.vstack(embeddings).astype(np.float32)
+
+    # FAISS IndexFlatIP: Inner Product tren vector da chuan hoa = cosine similarity
+    dim = all_embeddings.shape[1]  # 512 voi ViT-B/32
+    index = faiss.IndexFlatIP(dim)
+    index.add(all_embeddings)
+
+    # Luu index va danh sach duong dan
+    faiss.write_index(index, index_file)
+    with open(index_file + ".paths", "wb") as f:
+        pickle.dump([str(p) for p in valid_paths], f)
+
+    print(f"Index hoan tat: {len(valid_paths)} anh, dim={dim}")
+    return index, valid_paths
+
+# --- Tai lai index da tao ---
+def load_index(index_file: str):
+    """Tai FAISS index tu dia."""
+    index = faiss.read_index(index_file)
+    with open(index_file + ".paths", "rb") as f:
+        paths = pickle.load(f)
+    return index, paths
+\end{minted}
+
+\subsection{Bước 2: Tìm kiếm bằng văn bản và bằng ảnh}
+\label{subsec:clip_search}
+
+\begin{minted}[breaklines=true, fontsize=\small]{python}
+def search_by_text(
+    query: str, index, paths: list, top_k: int = 5
+) -> list:
+    """Tim kiem anh bang mo ta van ban."""
+    with torch.no_grad():
+        text_tokens = clip.tokenize([query]).to(device)
+        text_features = model.encode_text(text_tokens)
+        text_features = text_features / text_features.norm(dim=-1, keepdim=True)
+
+    query_vec = text_features.cpu().numpy().astype(np.float32)
+    scores, indices = index.search(query_vec, top_k)
+
+    results = [
+        (paths[idx], float(score))
+        for idx, score in zip(indices[0], scores[0])
+    ]
+    return results
+
+
+def search_by_image(
+    query_image_path: str, index, paths: list, top_k: int = 5
+) -> list:
+    """Tim kiem anh tuong tu bang anh mau."""
+    image = preprocess(
+        Image.open(query_image_path).convert("RGB")
+    ).unsqueeze(0).to(device)
+
+    with torch.no_grad():
+        image_features = model.encode_image(image)
+        image_features = image_features / image_features.norm(dim=-1, keepdim=True)
+
+    query_vec = image_features.cpu().numpy().astype(np.float32)
+    scores, indices = index.search(query_vec, top_k)
+    return [
+        (paths[idx], float(score))
+        for idx, score in zip(indices[0], scores[0])
+    ]
+
+
+# --- Su dung ---
+index, paths = build_image_index("data/images", "clip_index.faiss")
+
+# Tim kiem bang van ban
+print("=== Tim kiem bang van ban ===")
+results = search_by_text("a dog playing in the park", index, paths, top_k=5)
+for path, score in results:
+    print(f"Score: {score:.4f} | {path}")
+
+# Tim kiem bang anh
+print("\n=== Tim kiem bang anh ===")
+similar = search_by_image("query.jpg", index, paths, top_k=5)
+for path, score in similar:
+    print(f"Score: {score:.4f} | {path}")
+\end{minted}
+
+\subsection{Bước 3: Giao diện Gradio}
+\label{subsec:clip_gradio}
+
+\begin{minted}[breaklines=true, fontsize=\small]{python}
+import gradio as gr
+import tempfile
+import os
+
+# Tai index (gia su da build san)
+index, paths = load_index("clip_index.faiss")
+
+def text_search(query_text: str):
+    """Handler cho tim kiem bang van ban."""
+    if not query_text.strip():
+        return []
+    results = search_by_text(query_text, index, paths, top_k=6)
+    return [Image.open(path) for path, _ in results]
+
+def image_search(query_image):
+    """Handler cho tim kiem bang anh."""
+    if query_image is None:
+        return []
+    with tempfile.NamedTemporaryFile(suffix=".jpg", delete=False) as f:
+        query_image.save(f.name)
+        temp_path = f.name
+
+    results = search_by_image(temp_path, index, paths, top_k=6)
+    os.unlink(temp_path)
+    return [Image.open(path) for path, _ in results]
+
+with gr.Blocks(title="CLIP Image Search") as demo:
+    gr.Markdown("# Tim kiem Anh voi CLIP")
+    gr.Markdown(f"*Bo suu tap: {len(paths)} anh*")
+
+    with gr.Tab("Tim kiem bang Van ban"):
+        with gr.Row():
+            text_input = gr.Textbox(
+                placeholder="Vi du: a cat sitting on a sofa",
+                label="Mo ta anh can tim"
+            )
+            text_btn = gr.Button("Tim kiem", variant="primary")
+        gallery_text = gr.Gallery(
+            label="Ket qua", columns=3, height="auto"
+        )
+        text_btn.click(text_search, text_input, gallery_text)
+        text_input.submit(text_search, text_input, gallery_text)
+
+    with gr.Tab("Tim kiem bang Anh"):
+        with gr.Row():
+            image_input = gr.Image(type="pil", label="Upload anh mau")
+            img_btn = gr.Button("Tim anh tuong tu", variant="primary")
+        gallery_img = gr.Gallery(
+            label="Ket qua", columns=3, height="auto"
+        )
+        img_btn.click(image_search, image_input, gallery_img)
+
+demo.launch()
+\end{minted}
+
+\begin{mdframed}[style=infobox]
+\textbf{Tối ưu hóa cho bộ sưu tập lớn}
+
+Với hàng triệu ảnh, \texttt{IndexFlatIP} của FAISS tìm kiếm chính xác nhưng chậm (O(n)). Hãy dùng \texttt{IndexIVFFlat} để tìm kiếm gần đúng (Approximate Nearest Neighbor) nhanh hơn nhiều:
+
+\begin{minted}[breaklines=true, fontsize=\small]{python}
+# IVF: chia khong gian thanh nlist cluster, chi tim kiem trong nprobe cluster
+nlist = 100   # So cluster (thuong la sqrt(n_images))
+quantizer = faiss.IndexFlatIP(dim)
+index = faiss.IndexIVFFlat(quantizer, dim, nlist, faiss.METRIC_INNER_PRODUCT)
+index.train(all_embeddings)   # Can train truoc khi add
+index.add(all_embeddings)
+index.nprobe = 10             # So cluster kiem tra khi search (tang = chinh xac hon, cham hon)
+\end{minted}
+
+Đối với dataset 1 triệu ảnh, \texttt{IndexIVFFlat} nhanh hơn \texttt{IndexFlatIP} khoảng 20--50 lần với độ chính xác mất ít hơn 5\%.
+\end{mdframed}

@@ -1,3 +1,199 @@
-% part2 - chap4 - Section 4.6
-\section*{Section 4.6}
+\section{Recipe 6: Xây dựng Chatbot có khả năng "nhìn" và mô tả ảnh}
+\label{sec:recipe_visual_chatbot}
 
+Visual chatbot là ứng dụng kết hợp xử lý ngôn ngữ tự nhiên và thị giác: người dùng có thể tải ảnh lên và đặt câu hỏi bằng tiếng Việt, chatbot sẽ quan sát ảnh và trả lời. Recipe này trình bày hai phương án: dùng LLaVA chạy cục bộ và dùng Claude API của Anthropic.
+
+\subsection{Phương án 1: LLaVA chạy cục bộ}
+\label{subsec:vchat_llava}
+
+LLaVA (Large Language and Vision Assistant) là mô hình ngôn ngữ-thị giác mã nguồn mở chạy được trên GPU tiêu dùng. Đây là lựa chọn phù hợp khi bạn cần xử lý dữ liệu nhạy cảm không muốn gửi lên cloud.
+
+\begin{minted}[breaklines=true, fontsize=\small]{python}
+from transformers import LlavaNextProcessor, LlavaNextForConditionalGeneration
+import torch
+from PIL import Image
+
+# Tai model LLaVA-Next (can ~14GB VRAM voi float16)
+processor = LlavaNextProcessor.from_pretrained(
+    "llava-hf/llava-v1.6-mistral-7b-hf"
+)
+model = LlavaNextForConditionalGeneration.from_pretrained(
+    "llava-hf/llava-v1.6-mistral-7b-hf",
+    torch_dtype=torch.float16,
+    low_cpu_mem_usage=True,
+    device_map="auto",   # Tu dong phan bo bo nho GPU/CPU
+)
+
+def answer_about_image(image_path: str, question: str) -> str:
+    """Dat cau hoi ve mot anh va nhan phan hoi tu LLaVA."""
+    image = Image.open(image_path).convert("RGB")
+
+    # Tao conversation theo format LLaVA-Next
+    conversation = [
+        {
+            "role": "user",
+            "content": [
+                {"type": "image"},           # Placeholder cho anh
+                {"type": "text", "text": question},
+            ],
+        }
+    ]
+
+    # Ap dung chat template
+    prompt = processor.apply_chat_template(
+        conversation, add_generation_prompt=True
+    )
+    inputs = processor(
+        images=image, text=prompt, return_tensors="pt"
+    ).to(model.device)
+
+    with torch.no_grad():
+        output = model.generate(
+            **inputs,
+            max_new_tokens=512,
+            do_sample=True,
+            temperature=0.7,
+        )
+
+    # Chi giu phan duoc sinh ra (bo di phan prompt)
+    generated = output[0][inputs["input_ids"].shape[-1]:]
+    return processor.decode(generated, skip_special_tokens=True)
+
+# Su dung
+answer = answer_about_image(
+    "photo.jpg",
+    "Hay mo ta chi tiet nhung gi ban thay trong anh nay."
+)
+print(answer)
+\end{minted}
+
+\subsection{Phương án 2: Claude API của Anthropic}
+\label{subsec:vchat_claude}
+
+Với Claude API, bạn không cần GPU mạnh --- chỉ cần API key và kết nối internet. Claude có khả năng phân tích ảnh chi tiết và trả lời bằng tiếng Việt rất tốt.
+
+\begin{minted}[breaklines=true, fontsize=\small]{python}
+import anthropic
+import base64
+from pathlib import Path
+
+client = anthropic.Anthropic(api_key="your-api-key")
+
+def analyze_image_claude(image_path: str, prompt: str) -> str:
+    """Phan tich anh va tra loi cau hoi su dung Claude."""
+    # Doc anh va ma hoa base64
+    image_data = base64.standard_b64encode(
+        Path(image_path).read_bytes()
+    ).decode("utf-8")
+
+    # Xac dinh MIME type tu phan mo rong
+    suffix = Path(image_path).suffix.lower()
+    media_type_map = {
+        "jpg": "image/jpeg",
+        "jpeg": "image/jpeg",
+        "png": "image/png",
+        "gif": "image/gif",
+        "webp": "image/webp",
+    }
+    media_type = media_type_map.get(suffix.lstrip("."), "image/jpeg")
+
+    message = client.messages.create(
+        model="claude-opus-4-7",
+        max_tokens=1024,
+        messages=[{
+            "role": "user",
+            "content": [
+                {
+                    "type": "image",
+                    "source": {
+                        "type": "base64",
+                        "media_type": media_type,
+                        "data": image_data,
+                    },
+                },
+                {"type": "text", "text": prompt}
+            ],
+        }]
+    )
+    return message.content[0].text
+
+# Su dung
+result = analyze_image_claude(
+    "product.jpg",
+    "Mo ta san pham trong anh va de xuat gia ban hop ly."
+)
+print(result)
+\end{minted}
+
+\subsection{Giao diện Gradio}
+\label{subsec:vchat_gradio}
+
+Gradio cho phép tạo giao diện web tương tác trong vài dòng code. Đây là cách nhanh nhất để demo ứng dụng cho người dùng không kỹ thuật.
+
+\begin{minted}[breaklines=true, fontsize=\small]{python}
+import gradio as gr
+from PIL import Image
+import tempfile
+import os
+
+def chat_with_image(message: str, image, history: list):
+    """Ham xu ly tin nhan va tra ve lich su hoi thoai cap nhat."""
+    if image is not None:
+        # Luu PIL image ra file tam thoi de truyen vao ham inference
+        with tempfile.NamedTemporaryFile(suffix=".jpg", delete=False) as f:
+            image.save(f.name)
+            temp_path = f.name
+
+        # Su dung Claude API (hoac thay bang answer_about_image cho LLaVA)
+        response = analyze_image_claude(temp_path, message)
+        os.unlink(temp_path)  # Xoa file tam
+    else:
+        response = "Vui long upload mot anh de toi co the phan tich."
+
+    history.append((message, response))
+    return "", history
+
+with gr.Blocks(title="Visual Chatbot") as demo:
+    gr.Markdown("# Chatbot Thi giac --- Hoi bat cu dieu gi ve anh cua ban")
+
+    with gr.Row():
+        with gr.Column(scale=1):
+            image_input = gr.Image(type="pil", label="Upload anh")
+        with gr.Column(scale=2):
+            chatbot_display = gr.Chatbot(height=400, label="Lich su hoi thoai")
+            msg_input = gr.Textbox(
+                placeholder="Hay mo ta anh nay...",
+                show_label=False
+            )
+            send_btn = gr.Button("Gui", variant="primary")
+
+    # Xu ly ca Enter va nut Gui
+    msg_input.submit(
+        chat_with_image, [msg_input, image_input, chatbot_display],
+        [msg_input, chatbot_display]
+    )
+    send_btn.click(
+        chat_with_image, [msg_input, image_input, chatbot_display],
+        [msg_input, chatbot_display]
+    )
+
+demo.launch(share=True)   # share=True tao public URL qua Gradio tunnel
+\end{minted}
+
+\begin{mdframed}[style=infobox]
+\textbf{Mẹo thực tế khi xây dựng visual chatbot}
+
+\begin{enumerate}
+    \item \textbf{Nén ảnh trước khi gửi API:} Ảnh lớn tốn nhiều token và chậm hơn. Resize về tối đa 1024px cạnh dài trước khi gửi Claude API:
+\begin{minted}[breaklines=true, fontsize=\small]{python}
+def resize_if_large(image: Image.Image, max_size=1024) -> Image.Image:
+    w, h = image.size
+    if max(w, h) > max_size:
+        ratio = max_size / max(w, h)
+        image = image.resize((int(w*ratio), int(h*ratio)))
+    return image
+\end{minted}
+    \item \textbf{Streaming response:} Với Claude API, thêm \texttt{stream=True} để hiển thị phản hồi từng phần, giảm cảm giác chờ đợi.
+    \item \textbf{Bộ nhớ hội thoại:} Lưu \texttt{conversation\_history} để chatbot nhớ các câu hỏi trước đó về cùng một ảnh. Giới hạn lịch sử ở 10--20 lượt để tránh vượt context window.
+\end{enumerate}
+\end{mdframed}

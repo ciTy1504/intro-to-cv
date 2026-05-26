@@ -1,3 +1,182 @@
-% part2 - chap2 - Section 2.5
-\section*{Section 2.5}
+\section{Huấn luyện Phân tán trên nhiều GPU}
+\label{sec:distributed_training}
 
+Khi mô hình ngày càng lớn và tập dữ liệu ngày càng phình to, một GPU đơn lẻ không còn đủ sức xử lý. Huấn luyện phân tán---phân chia công việc qua nhiều GPU---đã trở thành kỹ năng thiết yếu của kỹ sư CV hiện đại. PyTorch cung cấp ba cấp độ hỗ trợ với sự đánh đổi khác nhau giữa đơn giản và hiệu năng.
+
+\subsection*{DataParallel: Nhanh để bắt đầu}
+
+\texttt{DataParallel} là cách đơn giản nhất để tận dụng nhiều GPU trên cùng một máy. Chỉ cần bọc mô hình và PyTorch tự xử lý phần còn lại:
+
+\begin{minted}[breaklines=true, fontsize=\small]{python}
+import torch
+import torch.nn as nn
+from torchvision import models
+
+model = models.resnet50(weights=None)
+
+if torch.cuda.device_count() > 1:
+    print(f"Using {torch.cuda.device_count()} GPUs!")
+    # Chia batch qua tất cả GPU có sẵn
+    model = nn.DataParallel(model)
+
+model = model.to("cuda")
+# Sau đó huấn luyện bình thường -- DataParallel tự split batch
+\end{minted}
+
+\texttt{DataParallel} hoạt động theo cơ chế \textit{parameter server}: GPU 0 giữ bản sao master của mô hình, chia batch cho các GPU khác, thu thập gradient về và cập nhật tham số. Nhược điểm là GPU 0 bị bottleneck và tốc độ scaling không tốt khi có nhiều hơn 4 GPU.
+
+\subsection*{DistributedDataParallel: Khuyến nghị cho môi trường thực tế}
+
+\texttt{DistributedDataParallel} (DDP) là giải pháp chính thức được khuyến nghị cho huấn luyện quy mô sản xuất. Khác với DataParallel, mỗi GPU chạy một \textit{process} độc lập với bản sao đầy đủ của mô hình---không có bottleneck tại GPU 0:
+
+\begin{minted}[breaklines=true, fontsize=\small]{python}
+import torch
+import torch.distributed as dist
+from torch.nn.parallel import DistributedDataParallel as DDP
+from torch.utils.data.distributed import DistributedSampler
+from torchvision import models
+
+def setup(rank, world_size):
+    """Khởi tạo process group cho communication giữa các GPU."""
+    dist.init_process_group(
+        backend="nccl",    # NCCL: tối ưu cho GPU-to-GPU communication
+        rank=rank,
+        world_size=world_size
+    )
+    torch.cuda.set_device(rank)
+
+def cleanup():
+    dist.destroy_process_group()
+
+def train_ddp(rank, world_size, num_epochs=10):
+    setup(rank, world_size)
+
+    # Mỗi process có bản sao riêng của model trên GPU của nó
+    model = models.resnet50(weights=None).to(rank)
+    model = DDP(model, device_ids=[rank])
+
+    optimizer = torch.optim.AdamW(model.parameters(), lr=1e-3)
+    criterion = torch.nn.CrossEntropyLoss().to(rank)
+
+    # DistributedSampler đảm bảo mỗi GPU nhận phần dữ liệu không trùng nhau
+    sampler = DistributedSampler(
+        train_dataset,
+        num_replicas=world_size,
+        rank=rank,
+        shuffle=True
+    )
+    loader = torch.utils.data.DataLoader(
+        train_dataset,
+        batch_size=32,      # Mỗi GPU xử lý 32 ảnh -> tổng effective batch = 32 * world_size
+        sampler=sampler,
+        num_workers=4,
+        pin_memory=True
+    )
+
+    for epoch in range(num_epochs):
+        # Quan trọng: cần gọi set_epoch để shuffle đúng mỗi epoch
+        sampler.set_epoch(epoch)
+        model.train()
+        for images, labels in loader:
+            images, labels = images.to(rank), labels.to(rank)
+            optimizer.zero_grad()
+            outputs = model(images)
+            loss = criterion(outputs, labels)
+            loss.backward()  # DDP tự all-reduce gradient qua tất cả GPU
+            optimizer.step()
+
+        if rank == 0:    # Chỉ process 0 in log và lưu checkpoint
+            print(f"Epoch {epoch+1}/{num_epochs} completed")
+
+    cleanup()
+
+if __name__ == "__main__":
+    world_size = torch.cuda.device_count()
+    torch.multiprocessing.spawn(
+        train_ddp,
+        args=(world_size,),
+        nprocs=world_size,
+        join=True
+    )
+\end{minted}
+
+Để chạy trên nhiều máy chủ (multi-node), PyTorch cung cấp lệnh \texttt{torchrun} thay thế cho cách spawn thủ công:
+
+\begin{minted}[breaklines=true, fontsize=\small]{bash}
+# Chạy trên 1 máy với 4 GPU
+torchrun --nproc_per_node=4 --nnodes=1 train.py
+
+# Chạy trên 2 máy, mỗi máy 4 GPU (tổng 8 GPU)
+# Trên máy chủ (node 0):
+torchrun --nproc_per_node=4 --nnodes=2 --node_rank=0 \
+         --master_addr="192.168.1.1" --master_port=29500 train.py
+# Trên máy worker (node 1):
+torchrun --nproc_per_node=4 --nnodes=2 --node_rank=1 \
+         --master_addr="192.168.1.1" --master_port=29500 train.py
+\end{minted}
+
+\subsection*{Hugging Face Accelerate: Viết code một lần, chạy ở bất kỳ đâu}
+
+Nếu muốn bỏ qua toàn bộ boilerplate DDP, thư viện \texttt{accelerate} cho phép viết code huấn luyện đơn giản mà vẫn chạy được trên single GPU, multi-GPU, hay multi-node mà không cần thay đổi code:
+
+\begin{minted}[breaklines=true, fontsize=\small]{python}
+from accelerate import Accelerator
+
+# Accelerator tự phát hiện môi trường (1 GPU, 8 GPU, TPU, ...)
+accelerator = Accelerator(mixed_precision="fp16")
+
+# Bọc tất cả object cần distribute bằng một lệnh duy nhất
+model, optimizer, train_loader, scheduler = accelerator.prepare(
+    model, optimizer, train_loader, scheduler
+)
+
+for images, labels in train_loader:
+    # KHÔNG cần .to(device) -- accelerator lo hết
+    outputs = model(images)
+    loss = criterion(outputs, labels)
+
+    # Dùng accelerator.backward thay vì loss.backward()
+    accelerator.backward(loss)
+    optimizer.step()
+    optimizer.zero_grad()
+    scheduler.step()
+
+# Lưu model đúng cách trong môi trường distributed
+accelerator.wait_for_everyone()
+unwrapped_model = accelerator.unwrap_model(model)
+accelerator.save(unwrapped_model.state_dict(), "best.pth")
+\end{minted}
+
+Cấu hình môi trường một lần bằng lệnh:
+
+\begin{minted}[breaklines=true, fontsize=\small]{bash}
+# Cấu hình accelerate (chọn số GPU, mixed precision, ...)
+accelerate config
+
+# Chạy script
+accelerate launch train.py
+\end{minted}
+
+\begin{mdframed}[style=infobox]
+\textbf{Gradient Accumulation: Mô phỏng batch lớn với bộ nhớ nhỏ}
+
+Khi GPU không đủ bộ nhớ để chạy batch size lớn nhưng thuật toán yêu cầu gradient từ nhiều mẫu hơn, \textit{gradient accumulation} là giải pháp: tích lũy gradient qua nhiều batch nhỏ trước khi cập nhật tham số.
+
+\begin{minted}[breaklines=true, fontsize=\small]{python}
+accumulation_steps = 4   # Effective batch = 32 * 4 = 128
+
+optimizer.zero_grad()
+for i, (images, labels) in enumerate(train_loader):
+    images, labels = images.to(device), labels.to(device)
+    outputs = model(images)
+    # Chia loss để gradient tương đương với batch lớn hơn
+    loss = criterion(outputs, labels) / accumulation_steps
+    loss.backward()   # Gradient tích lũy, chưa zero
+
+    if (i + 1) % accumulation_steps == 0:
+        optimizer.step()
+        optimizer.zero_grad()
+\end{minted}
+
+Lưu ý: khi dùng cùng DDP, cần bọc các bước tích lũy bằng \texttt{model.no\_sync()} để tắt all-reduce tốn kém giữa các GPU cho đến bước cuối cùng.
+\end{mdframed}

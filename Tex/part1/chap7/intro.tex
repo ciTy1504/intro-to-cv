@@ -1,24 +1,31 @@
-\chapter{Các Mô hình Sinh và Sáng tạo Thị giác}
-\label{chap:generative_models}
+\chapter{Học Biểu diễn và Kỷ nguyên Dữ liệu}
+\label{chap:representation_learning}
 %----------------------------------------------------------------------------------------
 %	INTRODUCTION
 %----------------------------------------------------------------------------------------
 
-Từ những chương đầu tiên, hành trình của chúng ta trong thế giới thị giác máy tính chủ yếu xoay quanh việc \textit{thấu hiểu} và \textit{phân tích}. Chúng ta đã huấn luyện các mô hình để nhận dạng (classification), định vị (detection), và phân tách (segmentation) thế giới thị giác—về cơ bản là dạy máy tính cách "nhìn" và diễn giải những gì đã có. Nhưng có một khía cạnh khác của trí thông minh, một năng lực mà từ lâu được xem là độc quyền của con người: khả năng \textbf{sáng tạo}.
+Trong suốt hành trình đã qua, chúng ta đã chứng kiến sự trỗi dậy của những kiến trúc hùng mạnh, từ CNN đến Transformer, có khả năng đạt được hiệu năng siêu phàm trên các bài toán thị giác. Tuy nhiên, đằng sau những thành công đó luôn có một người hùng thầm lặng nhưng không thể thiếu: các bộ dữ liệu được gán nhãn cẩn thận và quy mô lớn. ImageNet, với hơn một triệu ảnh được gán nhãn thủ công, chính là "nhiên liệu" đã đốt cháy cuộc cách mạng học sâu.
 
-Điều gì sẽ xảy ra nếu thay vì chỉ phân tích, chúng ta có thể dạy máy tính cách \textit{tưởng tượng} và \textit{tổng hợp} ra những hình ảnh và video hoàn toàn mới, những thế giới chưa từng tồn tại?
+Mô thức \textit{học có giám sát (supervised learning)} này—học từ các cặp (ảnh, nhãn)—đã thống trị lĩnh vực trong một thời gian dài. Nhưng nó cũng bộc lộ một "gót chân Achilles": sự phụ thuộc vào dữ liệu có nhãn. Trong thế giới thực, 99\% dữ liệu thị giác là không có nhãn. Internet chứa hàng tỷ bức ảnh và video, nhưng việc gán nhãn cho chúng ở quy mô này là một công việc bất khả thi. Sự khan hiếm của dữ liệu có nhãn đã trở thành "cổ chai" lớn nhất kìm hãm sự phát triển của AI.
 
-Chương này sẽ đưa chúng ta vào một lãnh địa kỳ diệu và đầy biến đổi của thị giác máy tính: \textbf{các mô hình sinh (generative models)}. Đây không còn là cuộc chơi của việc nhận dạng, mà là nghệ thuật của sự sáng tạo. Chúng ta sẽ khám phá những thuật toán có khả năng học được "phân phối xác suất" của dữ liệu thị giác—nói cách khác, chúng học được "ngữ pháp" tạo nên một bức ảnh chân dung, một khung cảnh thiên nhiên, hay một video về một chú chó đang chạy—và sau đó sử dụng ngữ pháp đó để tạo ra những tác phẩm mới.
+Chương này sẽ đưa chúng ta vào một cuộc cách mạng thứ hai, một sự thay đổi mô thức sâu sắc về cách chúng ta huấn luyện các mô hình. Điều gì sẽ xảy ra nếu chúng ta có thể dạy một cỗ máy "nhìn" mà không cần phải nói cho nó biết tên của mọi thứ? Điều gì sẽ xảy ra nếu bản thân dữ liệu, trong dạng thô, hỗn loạn và không có nhãn của nó, lại ẩn chứa đủ tín hiệu để một mô hình có thể tự học được "ngữ pháp" của thế giới thị giác?
 
-Cuộc cách mạng sáng tạo này đã diễn ra qua nhiều làn sóng, và chúng ta sẽ lần theo dấu chân của từng cuộc cách mạng đó:
+Đây chính là kỷ nguyên của \textbf{Học Biểu diễn (Representation Learning)} và \textbf{AI Lấy Dữ liệu làm Trung tâm (Data-centric AI)}. Thay vì tập trung vào việc thiết kế một kiến trúc chỉ để giải quyết một tác vụ cụ thể, mục tiêu giờ đây là học một \textit{biểu diễn} (representation) nội tại, phong phú và tổng quát về dữ liệu. Một biểu diễn tốt sẽ giống như một "bộ não thị giác" đa năng, có thể được tái sử dụng và tinh chỉnh một cách dễ dàng cho vô số các tác vụ khác nhau.
+
+Trong chương này, chúng ta sẽ khám phá những ý tưởng đột phá đã giải phóng AI khỏi sự phụ thuộc vào nhãn:
+
 \begin{itemize}
-	\item Chúng ta sẽ bắt đầu với \textbf{Mạng Sinh đối nghịch (Generative Adversarial Networks - GANs)}, một ý tưởng thiên tài về một trò chơi "mèo vờn chuột" giữa hai mạng nơ-ron: một "Họa sĩ" (Generator) cố gắng vẽ ra những bức ảnh giả ngày càng giống thật, và một "Nhà phê bình" (Discriminator) cố gắng phân biệt giữa thật và giả. Cuộc đối đầu này đã đẩy khả năng sinh ảnh lên một tầm cao mới, với các mô hình như \textbf{StyleGAN} có khả năng tạo ra những khuôn mặt người siêu thực.
+	\item \textbf{Học Tự giám sát (Self-Supervised Learning - SSL):} Đây là nghệ thuật tạo ra các "bài toán giả" (pretext tasks) để mô hình có thể tự học từ dữ liệu không nhãn. Chúng ta sẽ khám phá hai trường phái chính: các phương pháp \textit{tương phản} dạy mô hình biết "cái gì giống cái gì", và các phương pháp \textit{che giấu} (masking) thách thức mô hình "đoán phần còn thiếu".
 	
-	\item Tiếp theo, chúng ta sẽ chứng kiến sự trỗi dậy của một mô thức mới đã làm lu mờ cả GANs: \textbf{các Mô hình Khuếch tán (Diffusion Models)}. Lấy cảm hứng từ nhiệt động lực học, các mô hình này học cách "khử nhiễu" một cách từ từ để biến một mớ hỗn độn ngẫu nhiên thành một hình ảnh mạch lạc và chi tiết. Chính công nghệ này là nền tảng đằng sau các công cụ tạo ảnh từ văn bản (text-to-image) gây chấn động như \textbf{Stable Diffusion} và \textbf{Midjourney}, cho phép bất kỳ ai cũng có thể trở thành một "họa sĩ" chỉ bằng vài dòng mô tả.
+	\item \textbf{Học sâu Đo lường (Deep Metric Learning):} Vượt ra ngoài việc học đặc trưng, chúng ta sẽ tìm hiểu cách tổ chức không gian đặc trưng sao cho các đối tượng tương tự được kéo lại gần nhau và các đối tượng khác biệt bị đẩy ra xa, một nguyên lý cốt lõi cho các hệ thống tìm kiếm ảnh.
 	
-	\item Từ ảnh tĩnh, chúng ta sẽ tiến vào thế giới của chuyển động với các mô hình \textbf{Text-to-Video}. Chúng ta sẽ khám phá những công nghệ đột phá đằng sau các mô hình gây kinh ngạc như \textbf{Sora} của OpenAI, có khả năng tạo ra các đoạn video siêu thực, động và có cốt truyện chỉ từ một câu lệnh.
+	\item \textbf{AI Lấy Dữ liệu làm Trung tâm (Data-centric AI):} Một sự thay đổi triết lý quan trọng: thay vì chỉ tập trung vào việc tinh chỉnh mô hình, chúng ta sẽ khám phá tầm quan trọng của việc cải thiện, làm sạch và làm giàu chính bộ dữ liệu.
 	
-	\item Và vượt ra ngoài không gian 2D, chúng ta sẽ bước vào thế giới 3D với \textbf{Neural Rendering}. Các công nghệ như \textbf{NeRFs} và \textbf{Gaussian Splatting} đang thay đổi cách chúng ta tái tạo và tổng hợp các khung cảnh 3D từ một vài bức ảnh, mở đường cho một tương lai của metaverse, thực tế ảo, và các cặp song sinh kỹ thuật số (digital twins).
+	\item \textbf{Học với Ít dữ liệu hơn (Zero-shot \& Few-shot Learning):} Một khi đã có một biểu diễn mạnh mẽ, liệu chúng ta có thể dạy mô hình nhận ra một khái niệm mới chỉ với một vài ví dụ, hoặc thậm chí không cần ví dụ nào, chỉ bằng cách mô tả nó bằng ngôn ngữ?
+	
+	\item \textbf{Học Liên tục (Continual Learning):} Trong thế giới thực, dữ liệu luôn thay đổi. Chúng ta sẽ tìm hiểu thách thức trong việc dạy mô hình học các khái niệm mới mà không "quên" đi những gì nó đã biết.
+	
+	\item \textbf{Các Mô hình Nền tảng như những Cỗ máy Học Biểu diễn:} Cuối cùng, chúng ta sẽ chứng kiến sự hội tụ của tất cả các ý tưởng trên trong các mô hình nền tảng khổng lồ như \textbf{DINOv2}, \textbf{OpenCLIP}, và \textbf{I-JEPA}. Đây không còn là các mô hình cho một tác vụ, mà là các hệ thống cung cấp các biểu diễn "có sẵn" (off-the-shelf), mạnh mẽ cho gần như mọi bài toán thị giác.
 \end{itemize}
 
-Chương này không chỉ là một chuyến tham quan các thuật toán. Nó là một cuộc khám phá về ranh giới giữa nhận thức và sáng tạo, giữa thực tế và tưởng tượng. Các mô hình sinh đang thay đổi không chỉ ngành công nghiệp sáng tạo, mà còn cả cách chúng ta nghĩ về bản chất của trí thông minh. Hãy cùng bước vào thế giới nơi máy móc không chỉ học cách nhìn, mà còn học cách mơ.
+Chào mừng bạn đến với tương lai của việc huấn luyện AI. Chương này sẽ không chỉ thay đổi cách bạn xây dựng mô hình, mà còn thay đổi cách bạn nghĩ về dữ liệu, về việc học, và về bản chất của sự "thấu hiểu" thị giác.

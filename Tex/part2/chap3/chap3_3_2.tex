@@ -1,3 +1,255 @@
-% part2 - chap3 - Section 3.2
-\section*{Section 3.2}
+\section{Đóng gói và Phục vụ Mô hình}
+\label{sec:model_serving}
 
+Một mô hình nằm trong notebook Jupyter là một tài sản tiềm năng. Một mô hình được đóng gói thành dịch vụ API có thể truy cập qua mạng mới là một sản phẩm thực sự. Quá trình chuyển đổi này---từ tập lệnh Python chạy cục bộ sang dịch vụ web có thể mở rộng---đòi hỏi tư duy về thiết kế giao diện, xử lý lỗi, hiệu suất đồng thời, và khả năng tái tạo môi trường chạy. Phần này trình bày cách thực hiện điều đó với hai công cụ nền tảng: FastAPI cho lớp giao diện lập trình và Docker cho việc đóng gói môi trường.
+
+\subsection{Xây dựng API với FastAPI}
+\label{subsec:fastapi}
+
+FastAPI là framework Python hiện đại được xây dựng trên Starlette và Pydantic, hỗ trợ xử lý bất đồng bộ (async/await) nguyên bản và tự động tạo tài liệu API theo chuẩn OpenAPI. Đối với dịch vụ suy luận CV, hai đặc điểm này đặc biệt quan trọng: bất đồng bộ cho phép phục vụ nhiều yêu cầu đồng thời trong khi GPU đang xử lý batch, còn tài liệu tự động giúp đội ngũ frontend tích hợp nhanh chóng.
+
+Dưới đây là một dịch vụ suy luận CV hoàn chỉnh xử lý ảnh phân loại:
+
+\begin{minted}[breaklines=true, fontsize=\small]{python}
+from fastapi import FastAPI, File, UploadFile, HTTPException
+from fastapi.responses import JSONResponse
+from typing import List
+import torch
+import torchvision.transforms as transforms
+from PIL import Image
+import io
+import uvicorn
+
+app = FastAPI(title="CV Inference API", version="1.0.0")
+
+# Biến toàn cục để lưu trữ mô hình sau khi khởi động
+model = None
+transform = None
+class_names = None
+
+
+# Tải mô hình một lần duy nhất khi server khởi động
+@app.on_event("startup")
+async def load_model():
+    global model, transform, class_names
+    model = torch.load("models/best.pth", map_location="cpu")
+    model.eval()
+    transform = transforms.Compose([
+        transforms.Resize((224, 224)),
+        transforms.ToTensor(),
+        transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225]),
+    ])
+    class_names = ["cat", "dog", "bird"]
+
+
+@app.post("/predict")
+async def predict(file: UploadFile = File(...)):
+    # Kiểm tra định dạng file
+    if file.content_type not in ["image/jpeg", "image/png"]:
+        raise HTTPException(
+            status_code=400,
+            detail="Chi chap nhan anh JPEG hoac PNG"
+        )
+
+    # Đọc và tiền xử lý ảnh
+    contents = await file.read()
+    try:
+        image = Image.open(io.BytesIO(contents)).convert("RGB")
+    except Exception:
+        raise HTTPException(status_code=400, detail="Khong the doc file anh")
+
+    tensor = transform(image).unsqueeze(0)  # thêm chiều batch
+
+    # Suy luận
+    with torch.no_grad():
+        outputs = model(tensor)
+        probs = torch.softmax(outputs, dim=1)[0]
+        pred_idx = probs.argmax().item()
+
+    return JSONResponse({
+        "prediction": class_names[pred_idx],
+        "confidence": float(probs[pred_idx]),
+        "probabilities": {
+            cls: float(p) for cls, p in zip(class_names, probs)
+        },
+    })
+
+
+@app.get("/health")
+async def health():
+    """Endpoint kiem tra trang thai dich vu, dung cho load balancer."""
+    return {"status": "healthy", "model_loaded": model is not None}
+
+
+if __name__ == "__main__":
+    uvicorn.run(app, host="0.0.0.0", port=8000)
+\end{minted}
+
+Để kiểm tra dịch vụ sau khi khởi động, có thể dùng \texttt{curl} từ terminal hoặc thư viện \texttt{requests} trong Python:
+
+\begin{minted}[breaklines=true, fontsize=\small]{bash}
+# Kiểm tra sức khỏe dịch vụ
+curl http://localhost:8000/health
+
+# Gửi ảnh để phân loại
+curl -X POST "http://localhost:8000/predict" \
+    -H "accept: application/json" \
+    -H "Content-Type: multipart/form-data" \
+    -F "file=@test_image.jpg"
+\end{minted}
+
+\begin{minted}[breaklines=true, fontsize=\small]{python}
+import requests
+
+# Python client đơn giản
+with open("test_image.jpg", "rb") as f:
+    response = requests.post(
+        "http://localhost:8000/predict",
+        files={"file": ("test_image.jpg", f, "image/jpeg")},
+    )
+
+result = response.json()
+print(f"Du doan: {result['prediction']} ({result['confidence']:.1%})")
+\end{minted}
+
+Khi cần xử lý nhiều ảnh trong một lần gọi API, endpoint batch giúp tận dụng khả năng tính toán song song của GPU hiệu quả hơn so với nhiều lần gọi đơn lẻ:
+
+\begin{minted}[breaklines=true, fontsize=\small]{python}
+@app.post("/predict/batch")
+async def predict_batch(files: List[UploadFile] = File(...)):
+    """Phân loại nhiều ảnh cùng lúc trong một batch."""
+    if len(files) > 32:
+        raise HTTPException(
+            status_code=400,
+            detail="Toi da 32 anh moi batch"
+        )
+
+    tensors = []
+    for file in files:
+        if file.content_type not in ["image/jpeg", "image/png"]:
+            raise HTTPException(400, f"File {file.filename} khong hop le")
+        contents = await file.read()
+        image = Image.open(io.BytesIO(contents)).convert("RGB")
+        tensors.append(transform(image))
+
+    # Stack thành một tensor batch duy nhất để GPU xử lý song song
+    batch = torch.stack(tensors)
+
+    with torch.no_grad():
+        outputs = model(batch)
+        probs = torch.softmax(outputs, dim=1)
+
+    results = []
+    for i, file in enumerate(files):
+        pred_idx = probs[i].argmax().item()
+        results.append({
+            "filename": file.filename,
+            "prediction": class_names[pred_idx],
+            "confidence": float(probs[i][pred_idx]),
+        })
+
+    return JSONResponse({"results": results})
+\end{minted}
+
+\begin{mdframed}[style=infobox]
+\textbf{Mẹo hiệu suất cho FastAPI với mô hình CV:} Không bao giờ tải mô hình bên trong hàm endpoint---điều này sẽ làm chậm mỗi yêu cầu hàng chục giây. Luôn tải mô hình một lần trong \texttt{@app.on\_event("startup")} và lưu vào biến toàn cục hoặc \texttt{app.state}. Với tải cao, cân nhắc dùng \texttt{asyncio.get\_event\_loop().run\_in\_executor()} để đẩy tác vụ CPU-bound sang thread riêng, tránh block event loop của server.
+\end{mdframed}
+
+\subsection{Container hóa với Docker}
+\label{subsec:docker}
+
+Docker giải quyết vấn đề cổ điển trong phần mềm: \textit{"Trên máy tôi chạy được mà."} Bằng cách đóng gói toàn bộ môi trường---Python runtime, thư viện, model weights, và mã nguồn---vào một container bất biến, Docker đảm bảo rằng thứ chạy được trên laptop của nhà phát triển sẽ chạy chính xác như vậy trên máy chủ sản xuất, không phụ thuộc vào hệ điều hành hay các gói đã cài đặt trước.
+
+Dockerfile dưới đây xây dựng image cho dịch vụ suy luận CV với GPU support:
+
+\begin{minted}[breaklines=true, fontsize=\small]{text}
+FROM pytorch/pytorch:2.2.0-cuda12.1-cudnn8-runtime
+
+WORKDIR /app
+
+# Cài đặt dependencies trước để tận dụng Docker layer cache
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+
+# Sao chép mã nguồn và model
+COPY src/ ./src/
+COPY models/ ./models/
+
+# Mở port cho dịch vụ API
+EXPOSE 8000
+
+# Kiểm tra tự động: gọi /health mỗi 30 giây
+HEALTHCHECK --interval=30s --timeout=10s --retries=3 \
+    CMD curl -f http://localhost:8000/health || exit 1
+
+CMD ["uvicorn", "src.main:app", "--host", "0.0.0.0", "--port", "8000"]
+\end{minted}
+
+Các lệnh cơ bản để build và chạy container:
+
+\begin{minted}[breaklines=true, fontsize=\small]{bash}
+# Xây dựng image với tag phiên bản
+docker build -t cv-inference:v1.0 .
+
+# Chạy container với GPU support (yêu cầu nvidia-container-toolkit)
+docker run --gpus all -p 8000:8000 -d cv-inference:v1.0
+
+# Theo dõi log của container đang chạy
+docker logs -f <container_id>
+
+# Kiểm tra tài nguyên CPU/GPU/RAM đang sử dụng
+docker stats
+\end{minted}
+
+Trong môi trường sản xuất thực tế, dịch vụ suy luận thường cần phối hợp với reverse proxy (Nginx) để xử lý SSL, rate limiting, và cân bằng tải. Docker Compose giúp định nghĩa và quản lý hệ thống nhiều container này:
+
+\begin{minted}[breaklines=true, fontsize=\small]{yaml}
+version: "3.9"
+services:
+  inference:
+    build: .
+    ports:
+      - "8000:8000"
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+    volumes:
+      - ./models:/app/models
+    restart: unless-stopped
+    environment:
+      - MODEL_PATH=/app/models/best.pth
+      - LOG_LEVEL=info
+
+  nginx:
+    image: nginx:alpine
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx.conf:/etc/nginx/nginx.conf:ro
+    depends_on:
+      - inference
+    restart: unless-stopped
+\end{minted}
+
+\begin{mdframed}[style=infobox]
+\textbf{Tối ưu kích thước image với multi-stage build:} Image PyTorch đầy đủ có thể nặng 5--10 GB vì bao gồm cả compiler và công cụ phát triển. Multi-stage build giải quyết vấn đề này bằng cách tách biệt giai đoạn xây dựng (có đầy đủ công cụ) và giai đoạn chạy (chỉ cần runtime):
+
+\begin{minted}[breaklines=true, fontsize=\small]{text}
+# Giai đoạn 1: Build
+FROM pytorch/pytorch:2.2.0-cuda12.1-cudnn8-devel AS builder
+RUN pip install --user -r requirements.txt
+
+# Giai đoạn 2: Runtime - chỉ sao chép kết quả cần thiết
+FROM pytorch/pytorch:2.2.0-cuda12.1-cudnn8-runtime
+COPY --from=builder /root/.local /root/.local
+COPY src/ ./src/
+COPY models/ ./models/
+\end{minted}
+
+Kỹ thuật này thường giúp giảm kích thước image cuối từ 30--50\%, rút ngắn thời gian triển khai và chi phí lưu trữ container registry.
+\end{mdframed}

@@ -1,3 +1,151 @@
-% part2 - chap2 - Section 2.4
-\section*{Section 2.4}
+\section{Theo dõi và Quản lý Thí nghiệm với Weights \& Biases (W\&B)}
+\label{sec:wandb}
 
+Khi bạn chạy thực nghiệm đầu tiên, mọi thứ đều đơn giản: một file notebook, một lần chạy, một vài con số kết quả. Nhưng khi dự án phát triển, bạn sẽ nhanh chóng nhận ra mình đang quản lý hàng chục thực nghiệm song song với các cấu hình khác nhau, và câu hỏi ``cấu hình nào cho kết quả tốt nhất hôm qua?'' trở thành một bài toán không có lời giải nếu không có hệ thống theo dõi.
+
+Đây là lý do tồn tại của các công cụ \textit{experiment tracking}. \textbf{Weights \& Biases (W\&B)} là lựa chọn phổ biến nhất trong cộng đồng CV và ML hiện nay, với giao diện web trực quan, tích hợp dễ dàng và nhiều tính năng tự động hóa mạnh mẽ.
+
+\subsection*{Thiết lập và ghi log cơ bản}
+
+Chỉ cần thêm vài dòng code vào vòng lặp huấn luyện hiện có là đủ để bắt đầu theo dõi thực nghiệm:
+
+\begin{minted}[breaklines=true, fontsize=\small]{bash}
+pip install wandb
+wandb login   # Nhập API key từ tài khoản wandb.ai
+\end{minted}
+
+\begin{minted}[breaklines=true, fontsize=\small]{python}
+import wandb
+import torch
+
+# Khởi tạo run -- mọi thông số cấu hình được lưu lại
+wandb.init(
+    project="cv-classification",         # Tên project trên W&B
+    name="resnet50-experiment-01",        # Tên run cụ thể
+    config={
+        "model":         "resnet50",
+        "learning_rate": 1e-3,
+        "batch_size":    32,
+        "epochs":        50,
+        "optimizer":     "adamw",
+        "weight_decay":  1e-4,
+    }
+)
+# Lấy config đã merge (kể cả override từ sweep)
+config = wandb.config
+
+# Vòng lặp huấn luyện với W&B logging
+for epoch in range(config.epochs):
+    train_loss = train_one_epoch(model, train_loader, optimizer, device)
+    val_metrics = evaluate(model, val_loader, device, num_classes=10)
+    scheduler.step()
+
+    # Ghi log tất cả chỉ số vào W&B dashboard
+    wandb.log({
+        "epoch":          epoch,
+        "train/loss":     train_loss,
+        "val/accuracy":   val_metrics["accuracy"],
+        "val/f1":         val_metrics["f1"],
+        "val/precision":  val_metrics["precision"],
+        "val/recall":     val_metrics["recall"],
+        "lr":             scheduler.get_last_lr()[0],
+    })
+
+    # Lưu checkpoint tốt nhất
+    if val_metrics["f1"] > best_f1:
+        best_f1 = val_metrics["f1"]
+        torch.save(model.state_dict(), "models/best.pth")
+
+# Upload artifact (confusion matrix, checkpoint) lên W&B
+wandb.log({"confusion_matrix": wandb.Image("confusion_matrix.png")})
+artifact = wandb.Artifact("best-model", type="model")
+artifact.add_file("models/best.pth")
+wandb.log_artifact(artifact)
+
+wandb.finish()
+\end{minted}
+
+Sau khi chạy, bạn có thể vào \texttt{wandb.ai} để xem biểu đồ loss và metrics theo thời gian thực, so sánh trực quan giữa các run, và chia sẻ kết quả với đồng đội bằng một URL duy nhất.
+
+\subsection*{W\&B Sweeps: Tối ưu siêu tham số tự động}
+
+Tìm kiếm siêu tham số thủ công (thử từng giá trị một) là cách tiếp cận kém hiệu quả nhất. W\&B Sweeps tự động hóa quá trình này với các chiến lược thông minh như Bayesian optimization---thay vì thử đều đặn, nó học từ các thực nghiệm trước để ưu tiên vùng siêu tham số nhiều triển vọng hơn:
+
+\begin{minted}[breaklines=true, fontsize=\small]{python}
+# Định nghĩa không gian tìm kiếm siêu tham số
+sweep_config = {
+    "method": "bayes",    # "grid", "random", hoặc "bayes"
+    "metric": {
+        "name": "val/accuracy",
+        "goal": "maximize"
+    },
+    "parameters": {
+        "learning_rate": {
+            "min": 1e-5,
+            "max": 1e-2,
+            "distribution": "log_uniform_values"
+        },
+        "batch_size": {
+            "values": [16, 32, 64]
+        },
+        "dropout": {
+            "min": 0.1,
+            "max": 0.5
+        },
+        "weight_decay": {
+            "values": [1e-4, 1e-3, 1e-2]
+        },
+    }
+}
+
+# Tạo sweep
+sweep_id = wandb.sweep(sweep_config, project="cv-classification")
+
+# Hàm huấn luyện một run của sweep
+def train_sweep():
+    with wandb.init() as run:
+        config = wandb.config
+        model = build_model(config)
+        optimizer = torch.optim.AdamW(
+            model.parameters(),
+            lr=config.learning_rate,
+            weight_decay=config.weight_decay
+        )
+        for epoch in range(20):
+            train_loss = train_one_epoch(model, train_loader, optimizer, device)
+            val_metrics = evaluate(model, val_loader, device, num_classes=10)
+            wandb.log({
+                "train/loss":   train_loss,
+                "val/accuracy": val_metrics["accuracy"],
+            })
+
+# Chạy 20 thực nghiệm -- W&B tự chọn cấu hình thông minh
+wandb.agent(sweep_id, function=train_sweep, count=20)
+\end{minted}
+
+\begin{mdframed}[style=infobox]
+\textbf{So sánh các công cụ theo dõi thực nghiệm}
+
+\begin{center}
+\begin{tabular}{lccc}
+\hline
+\textbf{Tiêu chí}          & \textbf{W\&B}   & \textbf{MLflow} & \textbf{TensorBoard} \\
+\hline
+Giao diện web              & Cloud           & Tự host          & Tự host              \\
+Hyperparameter sweep        & Có (Bayesian)   & Giới hạn         & Không                \\
+Model registry              & Có              & Có               & Không                \\
+Chia sẻ team               & Dễ dàng         & Phức tạp         & Khó                  \\
+Tích hợp với PyTorch        & Rất tốt         & Tốt              & Tốt                  \\
+Chi phí                     & Miễn phí/Trả phí & Miễn phí (OSS)  & Miễn phí             \\
+\hline
+\end{tabular}
+\end{center}
+
+\vspace{0.5em}
+\textbf{Khi nào dùng gì:}
+\begin{itemize}
+    \item \textbf{W\&B}: Dự án cá nhân đến nhóm nhỏ, cần giao diện đẹp và hyperparameter sweep mạnh. Tầng miễn phí đủ dùng cho hầu hết nhu cầu.
+    \item \textbf{MLflow}: Môi trường doanh nghiệp cần tự host toàn bộ, hoặc khi cần tích hợp sâu với MLOps pipeline.
+    \item \textbf{TensorBoard}: Khi đã quen với TensorFlow và chỉ cần theo dõi loss/metrics cơ bản.
+\end{itemize}
+\end{mdframed}

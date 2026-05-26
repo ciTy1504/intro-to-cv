@@ -1,3 +1,28 @@
-% part2 - chap2 introduction
-\chapter*{Chapter 2 Introduction}
+\chapter{HUẤN LUYỆN VÀ ĐÁNH GIÁ MÔ HÌNH}
+\label{chap:p2_training}
 
+Nếu chương trước đặt nền móng bằng dữ liệu, thì chương này xây dựng ngôi nhà trên nền móng đó. Huấn luyện một mô hình thị giác máy tính là công việc đòi hỏi cả hai yếu tố tưởng chừng mâu thuẫn: sự chính xác của khoa học và sự nhạy bén của nghệ thuật. Phần khoa học nằm ở những quyết định có thể đo lường và lặp lại được---lựa chọn hàm mất mát, tốc độ học, chiến lược chuẩn hoá. Phần nghệ thuật nằm ở việc cảm nhận khi nào mô hình đang học tốt, khi nào nó đang ghi nhớ máy móc, và khi nào cần can thiệp thay đổi chiến lược.
+
+Trong những năm gần đây, khoảng cách giữa nghiên cứu và ứng dụng trong thị giác máy tính đã thu hẹp đáng kể nhờ sự phát triển của các framework huấn luyện hiện đại. PyTorch và TensorFlow/Keras không chỉ đơn thuần là thư viện tính toán tensor---chúng là những hệ sinh thái hoàn chỉnh với công cụ quản lý dữ liệu, tối ưu hoá phân tán, và triển khai sản xuất. Lựa chọn framework phù hợp với bài toán và đội ngũ là một quyết định chiến lược, không phải sở thích cá nhân.
+
+Nhưng huấn luyện chỉ là một nửa câu chuyện. Đánh giá mô hình---thực sự hiểu được điểm mạnh và điểm yếu của nó---quan trọng không kém, thậm chí đôi khi còn quan trọng hơn. Một mô hình đạt 95\% accuracy trên tập kiểm tra nhưng thất bại thảm hại trên những lớp hiếm gặp quan trọng không phải là một mô hình tốt. Đánh giá sai dẫn đến những quyết định triển khai sai, và trong các ứng dụng như y tế hay an toàn giao thông, điều đó có thể gây ra hậu quả nghiêm trọng.
+
+Chương này bao gồm toàn bộ vòng đời kỹ thuật của một dự án CV, từ thiết lập môi trường cho đến triển khai thực nghiệm quy mô lớn:
+
+\begin{itemize}
+    \item \textbf{Thiết lập môi trường:} Cách sử dụng đúng PyTorch, TensorFlow/Keras, cùng với tận dụng GPU thông qua CUDA và cuDNN để tăng tốc huấn luyện.
+
+    \item \textbf{Thư viện mô hình hiện đại:} Làm chủ \texttt{timm} với hơn 700 mô hình tiền huấn luyện và Hugging Face Transformers cho các mô hình ViT tiên tiến.
+
+    \item \textbf{Kỹ thuật đánh giá thực tế:} Xây dựng vòng lặp đánh giá toàn diện với các chỉ số phù hợp cho từng bài toán---phân loại, phát hiện đối tượng, phân đoạn.
+
+    \item \textbf{Theo dõi thực nghiệm với W\&B:} Quản lý hàng chục thực nghiệm song song, tối ưu siêu tham số tự động, và tái tạo kết quả có thể kiểm chứng.
+
+    \item \textbf{Huấn luyện phân tán:} Mở rộng từ một GPU lên nhiều GPU và nhiều máy chủ bằng \texttt{DataParallel}, \texttt{DistributedDataParallel} và thư viện \texttt{Accelerate}.
+
+    \item \textbf{Fine-tuning hiệu quả tham số (PEFT):} Tinh chỉnh các mô hình lớn như ViT và CLIP với LoRA, QLoRA và Visual Prompt Tuning mà không cần GPU khủng.
+
+    \item \textbf{Dữ liệu tổng hợp với GenAI:} Tận dụng Stable Diffusion và các công cụ tạo ảnh tổng hợp để bổ sung dữ liệu huấn luyện khi nhãn thực tế khan hiếm.
+\end{itemize}
+
+Mục tiêu cuối cùng của chương này không chỉ là trang bị cho bạn những kỹ năng vận hành công cụ, mà là hình thành một tư duy thực nghiệm có hệ thống---khả năng thiết kế, chạy, đánh giá và cải tiến thực nghiệm một cách nhất quán và có thể tái lập. Đây chính là kỹ năng phân biệt một kỹ sư AI thực chiến khỏi người chỉ chạy được notebook trên dữ liệu mẫu.

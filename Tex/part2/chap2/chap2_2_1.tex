@@ -1,3 +1,181 @@
-% part2 - chap2 - Section 2.1
-\section*{Section 2.1}
+\section{Thiết lập Môi trường với PyTorch và TensorFlow/Keras}
+\label{sec:env_setup}
 
+Trước khi viết bất kỳ dòng code huấn luyện nào, bạn cần có một môi trường làm việc ổn định và được cấu hình đúng. Một môi trường được thiết lập tốt không chỉ giúp tránh các lỗi khó chịu về phiên bản thư viện, mà còn đảm bảo rằng GPU của bạn được sử dụng tối đa và kết quả thực nghiệm có thể tái lập. Phần này hướng dẫn cách thiết lập môi trường hoàn chỉnh cho cả hai framework phổ biến nhất hiện nay: PyTorch và TensorFlow/Keras.
+
+\subsection{Giới thiệu torchvision và tf.keras.applications}
+\label{subsec:torchvision_keras}
+
+\textbf{PyTorch và torchvision} là sự lựa chọn hàng đầu trong nghiên cứu học thuật và ngày càng phổ biến trong sản xuất. Thư viện \texttt{torchvision} đi kèm cung cấp hai thứ quan trọng: các mô hình tiền huấn luyện sẵn dùng và các công cụ biến đổi dữ liệu ảnh linh hoạt. Đoạn code dưới đây thiết lập một pipeline huấn luyện hoàn chỉnh với ResNet-50, từ kiểm tra GPU, tải mô hình tiền huấn luyện, cho đến cấu hình DataLoader:
+
+\begin{minted}[breaklines=true, fontsize=\small]{python}
+import torch
+import torchvision
+import torchvision.transforms as transforms
+from torchvision import datasets, models
+from torch.utils.data import DataLoader
+
+# Kiểm tra GPU -- nếu có CUDA thì dùng GPU, không thì dùng CPU
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+print(f"Using device: {device}")
+
+# Tải ResNet-50 với trọng số tiền huấn luyện trên ImageNet
+# Dùng weights= thay vì pretrained=True (API mới từ torchvision >= 0.13)
+model = models.resnet50(weights=models.ResNet50_Weights.IMAGENET1K_V2)
+
+# Thay lớp fully-connected cuối cùng cho bài toán của mình
+# model.fc.in_features = 2048 với ResNet-50
+num_classes = 10
+model.fc = torch.nn.Linear(model.fc.in_features, num_classes)
+model = model.to(device)
+
+# Pipeline biến đổi dữ liệu cho tập huấn luyện
+# Normalize với mean/std của ImageNet để tương thích với trọng số tiền huấn luyện
+transform = transforms.Compose([
+    transforms.Resize((224, 224)),
+    transforms.ToTensor(),
+    transforms.Normalize(mean=[0.485, 0.456, 0.406],
+                         std=[0.229, 0.224, 0.225]),
+])
+
+# ImageFolder tự động gán nhãn theo tên thư mục con
+# Cấu trúc: data/train/class_A/, data/train/class_B/, ...
+train_dataset = datasets.ImageFolder("data/train", transform=transform)
+train_loader = DataLoader(
+    train_dataset,
+    batch_size=32,
+    shuffle=True,
+    num_workers=4,      # Đọc dữ liệu song song trên 4 luồng CPU
+    pin_memory=True,    # Tăng tốc chuyển dữ liệu CPU -> GPU
+)
+\end{minted}
+
+Tham số \texttt{pin\_memory=True} rất quan trọng khi dùng GPU: nó cấp phát bộ nhớ CPU ở dạng \textit{pinned} (không bị swap), cho phép chuyển dữ liệu sang GPU nhanh hơn đáng kể. Kết hợp với \texttt{num\_workers=4}, pipeline này có thể nạp dữ liệu song song trong khi GPU đang xử lý batch trước, loại bỏ hiện tượng GPU chờ dữ liệu (\textit{I/O bottleneck}).
+
+\vspace{0.5em}
+\textbf{TensorFlow/Keras và tf.keras.applications} là lựa chọn phổ biến trong môi trường doanh nghiệp và triển khai sản xuất nhờ hệ sinh thái TensorFlow Serving và TFLite. Thư viện \texttt{tf.keras.applications} cung cấp hàng chục kiến trúc tiền huấn luyện sẵn dùng, trong đó EfficientNetV2 là một trong những lựa chọn tốt nhất về cân bằng độ chính xác và tốc độ:
+
+\begin{minted}[breaklines=true, fontsize=\small]{python}
+import tensorflow as tf
+from tensorflow.keras import layers, applications
+
+# Tải EfficientNetV2-S không bao gồm lớp phân loại gốc
+# include_top=False cho phép ta thêm lớp đầu ra tùy chỉnh
+base_model = applications.EfficientNetV2S(
+    input_shape=(224, 224, 3),
+    include_top=False,
+    weights="imagenet"
+)
+
+# Đóng băng base model trong giai đoạn huấn luyện đầu
+# Chỉ huấn luyện lớp đầu ra mới thêm vào
+base_model.trainable = False
+
+# Xây dựng mô hình hoàn chỉnh
+num_classes = 10
+model = tf.keras.Sequential([
+    base_model,
+    layers.GlobalAveragePooling2D(),   # Giảm từ (7,7,1280) -> (1280,)
+    layers.Dropout(0.3),               # Regularization tránh overfitting
+    layers.Dense(num_classes, activation="softmax"),
+])
+
+model.compile(
+    optimizer=tf.keras.optimizers.Adam(learning_rate=1e-3),
+    loss="categorical_crossentropy",
+    metrics=["accuracy"]
+)
+
+# Xem tóm tắt kiến trúc
+model.summary()
+\end{minted}
+
+Chiến lược \textit{feature extraction} (đóng băng base model, chỉ huấn luyện lớp đầu) thường là bước đầu tốt nhất khi tập dữ liệu nhỏ. Sau khi mô hình hội tụ ở mức hợp lý, có thể mở khóa vài lớp cuối của base model và tiếp tục huấn luyện với tốc độ học nhỏ hơn---kỹ thuật gọi là \textit{fine-tuning}.
+
+\subsection{Sử dụng GPU và các thư viện CUDA, cuDNN}
+\label{subsec:gpu_setup}
+
+GPU biến đổi hoàn toàn tốc độ huấn luyện: một mô hình cần 8 giờ trên CPU có thể hoàn thành trong 20 phút trên GPU hiện đại. Tuy nhiên, để GPU hoạt động đúng với PyTorch hay TensorFlow, bạn cần cài đúng phiên bản CUDA và cuDNN tương thích với driver GPU và framework.
+
+Đầu tiên, kiểm tra cài đặt GPU hiện tại:
+
+\begin{minted}[breaklines=true, fontsize=\small]{bash}
+# Xem thông tin GPU và phiên bản driver
+nvidia-smi
+
+# Kiểm tra phiên bản CUDA compiler đã cài
+nvcc --version
+
+# Cài PyTorch với CUDA 12.1 (kiểm tra phiên bản phù hợp tại pytorch.org)
+pip install torch torchvision torchaudio \
+    --index-url https://download.pytorch.org/whl/cu121
+\end{minted}
+
+Sau khi cài xong, xác nhận PyTorch nhận ra GPU:
+
+\begin{minted}[breaklines=true, fontsize=\small]{python}
+import torch
+print(f"CUDA available: {torch.cuda.is_available()}")
+print(f"CUDA version: {torch.version.cuda}")
+print(f"Number of GPUs: {torch.cuda.device_count()}")
+print(f"GPU Name: {torch.cuda.get_device_name(0)}")
+\end{minted}
+
+\vspace{0.5em}
+\textbf{Quản lý bộ nhớ GPU} là kỹ năng thiết yếu khi làm việc với các mô hình lớn. Bộ nhớ GPU có giới hạn cứng---khi vượt quá giới hạn sẽ xảy ra lỗi \texttt{CUDA out of memory} (OOM) rất khó chịu. PyTorch cung cấp công cụ theo dõi bộ nhớ theo thời gian thực:
+
+\begin{minted}[breaklines=true, fontsize=\small]{python}
+import torch
+
+# Theo dõi mức sử dụng bộ nhớ GPU
+print(f"GPU Memory Allocated: {torch.cuda.memory_allocated()/1e9:.2f} GB")
+print(f"GPU Memory Reserved:  {torch.cuda.memory_reserved()/1e9:.2f} GB")
+
+# Giải phóng bộ nhớ cache không còn cần thiết
+torch.cuda.empty_cache()
+\end{minted}
+
+\textbf{Huấn luyện với độ chính xác hỗn hợp (Automatic Mixed Precision -- AMP)} là kỹ thuật quan trọng để vừa giảm bộ nhớ GPU vừa tăng tốc tính toán. Thay vì dùng float32 cho mọi thứ, AMP tự động quyết định phần nào dùng float16 (nhanh hơn, ít bộ nhớ hơn) và phần nào giữ float32 (để đảm bảo độ ổn định số học):
+
+\begin{minted}[breaklines=true, fontsize=\small]{python}
+from torch.cuda.amp import autocast, GradScaler
+
+# GradScaler ngăn gradient underflow khi dùng float16
+scaler = GradScaler()
+
+for images, labels in train_loader:
+    images, labels = images.to(device), labels.to(device)
+    optimizer.zero_grad()
+
+    # autocast tự động chọn dtype phù hợp cho từng phép tính
+    with autocast():
+        outputs = model(images)
+        loss = criterion(outputs, labels)
+
+    # Scale loss trước khi backward để tránh underflow
+    scaler.scale(loss).backward()
+    # Unscale gradient rồi mới clip (nếu cần)
+    scaler.unscale_(optimizer)
+    torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
+    # Cập nhật tham số và scaler
+    scaler.step(optimizer)
+    scaler.update()
+\end{minted}
+
+Trong thực tế, AMP thường tăng tốc huấn luyện lên 1.5--2x trên GPU NVIDIA Volta trở lên (V100, A100, RTX 30xx, 40xx series) mà gần như không ảnh hưởng đến độ chính xác cuối cùng.
+
+\begin{mdframed}[style=infobox]
+\textbf{Xử lý lỗi CUDA Out of Memory (OOM)}
+
+Lỗi OOM là tình huống phổ biến nhất khi mới bắt đầu huấn luyện. Các giải pháp theo thứ tự ưu tiên:
+
+\begin{enumerate}
+    \item \textbf{Giảm batch size:} Cách đơn giản nhất. Chia đôi batch size thường giải quyết được ngay.
+    \item \textbf{Dùng Automatic Mixed Precision (AMP):} Giảm ~50\% bộ nhớ với ít ảnh hưởng đến kết quả.
+    \item \textbf{Gradient accumulation:} Mô phỏng batch size lớn với bộ nhớ nhỏ. Nếu muốn effective batch size 128 nhưng chỉ chạy được batch 32, tích luỹ gradient qua 4 bước rồi mới cập nhật.
+    \item \textbf{Gradient checkpointing:} Hy sinh tốc độ để đổi lấy bộ nhớ---tính toán lại activation trong backward thay vì lưu tất cả.
+    \item \textbf{Model parallelism:} Chia mô hình qua nhiều GPU nếu mô hình quá lớn cho một GPU.
+\end{enumerate}
+
+Trước khi giảm batch size, hãy gọi \texttt{torch.cuda.empty\_cache()} để giải phóng cache chưa được dùng.
+\end{mdframed}
