@@ -347,6 +347,12 @@ Sử dụng kernel này sẽ cho kết quả tương tự như quy trình hai b�
 Khi $A=1$, nó trở thành unsharp masking thông thường. Khi $A>1$, nó tăng cường ảnh gốc trước khi cộng mặt nạ, tạo ra hiệu ứng sắc nét mạnh hơn.
 \textbf{Ưu điểm:} Kỹ thuật này linh hoạt hơn và ít nhạy cảm với nhiễu hơn so với bộ lọc Laplace thuần túy, vì bước làm mờ ban đầu đã giúp giảm bớt nhiễu.
 
+\begin{center}
+    \includegraphics[width=1.0\textwidth]{images/sharpening.png}
+    \captionof{figure}{Ví dụ bằng anh Độ Mixi}
+    \label{fig:derivative_edge_response}
+\end{center}
+
 \subsection{Phát hiện biên (Edge Detection)}
 \label{subsec:edge_detection}
 
@@ -412,6 +418,11 @@ Các bước của thuật toán Canny:
 
 Thuật toán Canny, với sự kết hợp của lọc Gaussian, non-maximum suppression và hysteresis thresholding, tạo ra các bản đồ cạnh chất lượng cao, mỏng và ít bị đứt gãy.
 
+\begin{center}
+	\includegraphics[width=1.0\textwidth]{images/canny.png}
+	\captionof{figure}{Các bước của thuật toán phát hiện biên Canny. (a) Ảnh gốc. (b) Làm mờ bằng bộ lọc Gaussian. (c) Tính toán độ lớn gradient, làm nổi bật các cạnh. (d) Áp dụng Non-maximum Suppression để làm mỏng các cạnh. (e) Kết quả cuối cùng sau khi áp dụng Hysteresis Thresholding.}
+	\label{fig:canny_steps}
+\end{center}
 
 \subsection{Các phép toán Hình thái học (Morphological Operations)}
 \label{subsec:morphological_operations}

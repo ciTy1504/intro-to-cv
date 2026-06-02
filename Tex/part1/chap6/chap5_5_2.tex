@@ -151,7 +151,7 @@ Thành công của U-Net đã truyền cảm hứng cho vô số các biến th�
 \subsection{Phân đoạn Thực thể: Kế thừa từ Mask R-CNN và Các Biến thể}
 \label{subsec:instance_segmentation_mask_rcnn}
 
-Như đã đề cập ở phần \ref{subsubsec:cnn_based_detectors} trong mục Object Detection, \textbf{Mask R-CNN} \cite{He2017} mở rộng Faster R-CNN bằng cách thêm một nhánh Mask Head để dự đoán mặt nạ nhị phân cho từng RoI. Ở phần này, chúng ta sẽ không lặp lại kiến trúc cơ bản, mà tập trung vào các \textbf{biến thể, xu hướng và cải tiến} từ Mask R-CNN:
+Như đã đề cập ở trong mục Object Detection, \textbf{Mask R-CNN} \cite{He2017} mở rộng Faster R-CNN bằng cách thêm một nhánh Mask Head để dự đoán mặt nạ nhị phân cho từng RoI. Ở phần này, chúng ta sẽ không lặp lại kiến trúc cơ bản, mà tập trung vào các \textbf{biến thể, xu hướng và cải tiến} từ Mask R-CNN:
 
 \begin{itemize}
 	\item \textbf{Biến thể hiệu quả và nhẹ:} 
@@ -190,36 +190,91 @@ Trong vài năm gần đây, phân đoạn ảnh chứng kiến một bước nh
 \subsubsection{Segment Anything Model (SAM, 2023)}
 \label{subsubsec:sam}
 
-\textbf{Khái niệm cốt lõi:} SAM \cite{Kirillov2023} định nghĩa phân đoạn như một hàm:
-\begin{equation}
-	\mathcal{M}: (I, P) \mapsto \hat{M},
-\end{equation}
-trong đó $I$ là ảnh đầu vào, $P$ là prompt (điểm, bounding box, văn bản, mask thô), và $\hat{M} \in [0,1]^{H \times W}$ là mặt nạ dự đoán. Mục tiêu là học một mapping tổng quát, có thể áp dụng cho bất kỳ ảnh hay đối tượng nào.
+\textbf{Segment Anything Model (SAM)} \cite{Kirillov2023} của Meta AI là một bước nhảy vọt trong tư duy về segmentation. Thay vì huấn luyện mô hình riêng cho từng task (semantic, instance, medical...), SAM đặt câu hỏi: \textit{liệu có thể xây dựng một foundation model phân đoạn bất kỳ vật thể nào trong bất kỳ ảnh nào, chỉ cần người dùng chỉ định qua prompt?}
 
-\textbf{Kiến trúc chi tiết:}
+\textbf{Định nghĩa bài toán: Promptable Segmentation.}
+SAM định nghĩa segmentation như một hàm có điều kiện prompt:
+\[
+\mathcal{M}: (I,\, P) \mapsto \{\hat{M}_k,\, s_k\}_{k=1}^{K}
+\]
+trong đó $I$ là ảnh đầu vào, $P$ là prompt (điểm click, bounding box, mask thô, hoặc text), và đầu ra là tập $K$ mặt nạ ứng viên $\hat{M}_k$ cùng điểm confidence $s_k$ tương ứng. Đây là thiết kế có chủ đích: một prompt đơn thường \textit{mơ hồ} --- một điểm click vào người có thể muốn segment tay, người, hay cả nhóm người --- nên SAM trả về nhiều mask thay vì một, để người dùng hoặc pipeline downstream lựa chọn.
+
+\begin{center}
+	\includegraphics[width=0.98\textwidth]{images/sam_architecture.png}
+	\captionof{figure}{Kiến trúc tổng quan SAM với ba thành phần: Image Encoder xử lý ảnh offline, Prompt Encoder xử lý các loại prompt khác nhau, và Mask Decoder kết hợp hai embedding để sinh mask.}
+	\label{fig:sam_arch}
+\end{center}
+
+\textbf{Thành phần 1 — Image Encoder.}
+Image Encoder dựa trên \textbf{ViT-H} (Vision Transformer Huge, 632M tham số) được pre-train bằng \textbf{Masked Autoencoder (MAE)}: che ngẫu nhiên 75\% patch ảnh rồi yêu cầu mô hình tái tạo lại, buộc encoder phải học biểu diễn phong phú mà không cần nhãn. Ảnh đầu vào $1024 \times 1024$ được chia thành các patch $16 \times 16$, tạo ra $64 \times 64 = 4096$ token. Sau khi qua ViT, encoder xuất ra \textbf{image embedding} $E_I \in \mathbb{R}^{64 \times 64 \times 256}$ --- một feature map 2D với 256 kênh tại mỗi vị trí.
+
+Đây là bước tốn kém nhất ($\sim$0.15 giây/ảnh trên GPU), nhưng chỉ chạy \textit{một lần} cho mỗi ảnh và có thể được tính trước (precompute). Mọi query prompt sau đó đều dùng lại $E_I$ này --- đây là lý do SAM có thể xử lý nhiều prompt liên tiếp trên cùng ảnh với tốc độ cao.
+
+\textbf{Thành phần 2 — Prompt Encoder.}
+Prompt Encoder chuyển đổi mọi dạng prompt thành embedding $E_P$ cùng chiều $D = 256$ để tương thích với $E_I$. Cách xử lý khác nhau theo loại prompt:
+
 \begin{itemize}
-	\item \textbf{Image Encoder:} Một Vision Transformer (ViT-Huge), ánh xạ ảnh $I$ thành một tensor embedding $E_I \in \mathbb{R}^{N \times D}$, với $N = H \cdot W / p^2$ token và $D$ chiều embedding. Phép ánh xạ có thể được biểu diễn:
-	\begin{equation}
-		E_I = \text{ViT}(I)
-	\end{equation}
-	\item \textbf{Prompt Encoder:} Mỗi loại prompt $P$ được ánh xạ thành embedding $E_P \in \mathbb{R}^{L \times D}$, nơi $L$ là số token đặc trưng cho prompt (ví dụ 1 token cho click, nhiều token cho text prompt).
-	\item \textbf{Mask Decoder:} Sử dụng cross-attention giữa $E_P$ và $E_I$ để học mapping phi tuyến:
-	\begin{equation}
-		\hat{M} = \sigma \big( \text{Decoder}(E_I, E_P) \big),
-	\end{equation}
-	với $\sigma$ là sigmoid, đảm bảo đầu ra là mặt nạ nhị phân xác suất.
-	\item \textbf{Dữ liệu khổng lồ:} SAM được huấn luyện trên SA-1B (1.1 tỷ mặt nạ trên 11 triệu ảnh), giúp embedding $E_I$ và $E_P$ trở nên cực kỳ tổng quát.
+	\item \textbf{Points (click):} Mỗi điểm $(x, y)$ được biểu diễn bằng \textit{positional encoding} 2D (sinusoidal theo tọa độ), cộng thêm một \textit{learned embedding} để phân biệt foreground click (``có vật thể tại đây'') và background click (``không có vật thể tại đây'').
+	\item \textbf{Bounding box:} Được biểu diễn như hai điểm --- góc trên-trái và góc dưới-phải, mỗi điểm có positional encoding riêng và learned embedding phân biệt hai góc.
+	\item \textbf{Mask thô (coarse mask):} Được đưa qua một chuỗi Conv layers để downsample về kích thước $64 \times 64$, sau đó cộng (element-wise) vào image embedding $E_I$ như một dạng spatial prior.
+	\item \textbf{Text:} Sử dụng CLIP text encoder để tạo embedding. Tuy nhiên trong phiên bản SAM gốc, text prompt chưa được tích hợp hoàn toàn; đây là hướng phát triển của SAM 2 và Grounded SAM.
 \end{itemize}
 
-\textbf{Tư duy nền tảng:}
-\begin{itemize}
-	\item Phân đoạn trở thành \textit{truy vấn (query)} thay vì dự đoán dày đặc trên toàn bộ ảnh.
-	\item Tối ưu hóa end-to-end: learning objective là giảm BCE Loss cho mặt nạ:
-	\begin{equation}
-		\mathcal{L}_{mask} = - \frac{1}{HW} \sum_{i,j} \big[ M_{i,j} \log \hat{M}_{i,j} + (1-M_{i,j}) \log (1-\hat{M}_{i,j}) \big].
-	\end{equation}
-	\item Biểu diễn chung cho hình ảnh và prompt cho phép zero-shot segmentation.
-\end{itemize}
+\begin{center}
+	\includegraphics[width=0.98\textwidth]{images/sam_model_detail.png}
+	\captionof{figure}{Chi tiết các loại prompt được SAM hỗ trợ: foreground/background points, bounding box, và mask thô. Mỗi loại được encode thành vector 256 chiều để đưa vào Mask Decoder.}
+	\label{fig:sam_prompt}
+\end{center}
+
+\textbf{Thành phần 3 — Mask Decoder.}
+Mask Decoder là thành phần nhẹ nhất ($\sim$4M tham số) nhưng thực hiện công việc quan trọng nhất: kết hợp $E_I$ và $E_P$ để sinh mask. Kiến trúc gồm:
+
+\begin{enumerate}
+	\item \textbf{Output tokens:} Thêm vào $K+1$ token học được --- $K=3$ token mask (cho 3 ứng viên ambiguous) và 1 token IoU score.
+	\item \textbf{Two-way attention:} Hai lớp Transformer decoder với self-attention hai chiều:
+		\begin{itemize}
+			\item \textit{Token-to-image attention:} Mỗi mask token ``hỏi'' image embedding để biết vùng nào liên quan.
+			\item \textit{Image-to-token attention:} Image embedding ``cập nhật'' dựa trên thông tin prompt.
+		\end{itemize}
+	\item \textbf{Upsampling:} Image embedding sau attention được upsample $4\times$ bằng transposed convolution về $256 \times 256$, rồi mỗi mask token chiếu (dot product) lên để tạo logit mask.
+	\item \textbf{Sigmoid + IoU prediction:} Logit mask đưa qua sigmoid cho mask xác suất $\hat{M}_k \in [0,1]^{256 \times 256}$; IoU token dự đoán điểm tin cậy $s_k$ cho từng mask.
+\end{enumerate}
+
+\textbf{Hàm mất mát huấn luyện.}
+SAM được tối ưu với loss kết hợp:
+\[
+\mathcal{L} = \lambda_1 \mathcal{L}_{\text{focal}} + \lambda_2 \mathcal{L}_{\text{dice}} + \lambda_3 \mathcal{L}_{\text{IoU}}
+\]
+trong đó $\mathcal{L}_{\text{focal}}$ là Focal Loss pixel-wise giải quyết mất cân bằng foreground/background, $\mathcal{L}_{\text{dice}}$ là Dice Loss đảm bảo mask overlap, và $\mathcal{L}_{\text{IoU}}$ là MSE loss để dự đoán IoU score. Trong 3 mask đầu ra, chỉ mask có loss thấp nhất so với ground-truth mới được dùng để backprop --- buộc mô hình học ít nhất một mask tốt cho mỗi prompt.
+
+\textbf{SA-1B Dataset và Data Engine.}
+Không có dataset nào sẵn có đủ lớn và đa dạng cho SAM. Meta AI xây dựng \textbf{SA-1B} từ đầu qua quy trình 3 pha:
+
+\begin{center}
+	\includegraphics[width=0.80\textwidth]{images/sam_data_engine.png}
+	\captionof{figure}{Ba pha của SAM Data Engine: (1) Assisted-manual — annotator dùng SAM hỗ trợ; (2) Semi-automatic — SAM tự sinh mask cho vật thể nền; (3) Fully automatic — SAM tự chạy toàn bộ không cần annotator.}
+	\label{fig:sam_data_engine}
+\end{center}
+
+\begin{enumerate}
+	\item \textbf{Assisted-manual (Pha 1):} Annotator dùng giao diện với SAM hỗ trợ để vẽ mask nhanh hơn. SAM vẫn là model non-specialist, annotator hiệu chỉnh lại. Thu được $\sim$4.3M mask.
+	\item \textbf{Semi-automatic (Pha 2):} SAM tự detect và segment các vật thể nổi bật, annotator chỉ bổ sung thêm mask cho vật thể chưa được detect. Thu thêm $\sim$5.9M mask.
+	\item \textbf{Fully automatic (Pha 3):} SAM chạy hoàn toàn tự động: đặt lưới $32 \times 32$ điểm trên ảnh, mỗi điểm sinh 3 mask ở 3 mức granularity (toàn bộ/phần/chi tiết nhỏ), lọc qua confidence score và NMS. Thu $\sim$1.1 tỷ mask trên 11 triệu ảnh.
+\end{enumerate}
+
+\begin{center}
+	\includegraphics[width=0.85\textwidth]{images/sa1b_dataset.png}
+	\captionof{figure}{Mẫu ảnh từ SA-1B: mỗi ảnh có trung bình $\sim$100 mask ở nhiều mức granularity khác nhau, từ vật thể nhỏ như nút áo đến vùng lớn như bầu trời.}
+	\label{fig:sa1b}
+\end{center}
+
+\begin{mdframed}[style=infobox]
+\textbf{SAM 2 (2024) — Mở rộng sang Video}
+
+SAM 2 mở rộng SAM sang bài toán \textbf{video object segmentation}: cho trước một prompt trên frame đầu tiên, model tự động theo dõi và segment vật thể đó qua các frame tiếp theo. Kiến trúc bổ sung \textbf{Memory Bank} --- lưu trữ embedding của các frame đã xử lý --- và \textbf{Memory Attention} để image encoder của frame hiện tại có thể ``nhớ'' ngữ cảnh từ quá khứ.
+
+SAM và SAM 2 trở thành backbone cho nhiều ứng dụng: Grounded SAM (kết hợp text detector + SAM), MedSAM (fine-tune cho y tế), EfficientSAM (distill SAM về model nhỏ hơn), Track Anything, và nhiều hệ thống annotation tự động khác.
+\end{mdframed}
 
 \subsubsection{OneFormer (2023) và SEEM (2023)}
 \label{subsubsec:oneformer_seem}

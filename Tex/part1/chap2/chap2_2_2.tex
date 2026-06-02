@@ -304,6 +304,12 @@ Harris, Shi-Tomasi, và FAST là ba trong số những bộ phát hiện điểm
 \end{itemize}
 Trong thực tế, nhiều hệ thống hiện đại sử dụng kết hợp các phương pháp. Ví dụ, thuật toán ORB (sẽ được thảo luận trong phần sau) sử dụng FAST để phát hiện các điểm đặc trưng một cách nhanh chóng, sau đó sử dụng một biến thể của Harris để xếp hạng và lọc chúng.
 
+\begin{center}
+	\includegraphics[width=1.0\textwidth]{images/edge_detect.png}
+	\captionof{figure}{So sánh các bước của 3 thuật toán phát hiện cạnh kinh điển.}
+	\label{fig:canny_steps}
+\end{center}
+
 \subsubsection{Ứng dụng trong So khớp và Theo dõi}
 \label{subsubsec:keypoint_matching_tracking_apps}
 Phát hiện điểm đặc trưng là bước đầu tiên trong một pipeline lớn hơn. Sau khi phát hiện, các bước tiếp theo thường là:

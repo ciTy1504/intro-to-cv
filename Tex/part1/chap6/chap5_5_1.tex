@@ -26,903 +26,330 @@ Sự thành công của AlexNet trong phân loại ảnh năm 2012 đã mở ra 
 \label{subsubsec:r_cnn_family}
 
 \paragraph{R-CNN (2014):}
-\textbf{Regions with CNN features (R-CNN)} \cite{Girshick2014} là mô hình tiên phong đưa CNN vào bài toán phát hiện vật thể, đánh dấu sự chuyển dịch từ đặc trưng thủ công (HOG, DPM) sang đặc trưng học sâu.
+\textbf{Regions with CNN features (R-CNN)} \cite{Girshick2014} là mô hình tiên phong đưa sức mạnh của CNN vào bài toán phát hiện vật thể, đánh dấu sự chuyển dịch dứt khoát từ các đặc trưng thủ công (HOG, DPM) sang biểu diễn học sâu. Ý tưởng trung tâm rất đơn giản: \textit{nếu CNN có thể nhận dạng vật thể khi được đưa toàn bộ bức ảnh, tại sao không ``cắt'' các vùng có khả năng chứa vật thể ra rồi đưa từng vùng vào CNN?}
 
-\textbf{Ý tưởng cốt lõi:} Tách bài toán phát hiện thành hai bước:
-(1) sinh các vùng có khả năng chứa vật thể,
-(2) phân loại và tinh chỉnh từng vùng bằng CNN.
+\textbf{Bước 1 — Sinh vùng đề xuất với Selective Search.}
+Trước khi CNN xử lý bất cứ điều gì, R-CNN cần biết \textit{nên nhìn vào đâu}. Nhiệm vụ này được giao cho thuật toán \textbf{Selective Search}: thay vì quét toàn bộ ảnh theo kiểu cửa sổ trượt (sliding window) --- cách tiếp cận cổ điển nhưng tốn kém --- Selective Search phân tích ảnh theo màu sắc, kết cấu, kích thước và tính liên tục để đề xuất khoảng \textbf{2000 vùng} (region proposals) có khả năng cao chứa vật thể.
 
----
+Mỗi vùng đề xuất $R_i$ là một hình chữ nhật trên ảnh gốc. Selective Search không học từ dữ liệu --- nó hoạt động thuần túy bằng heuristic --- nhưng đảm bảo recall cao: hầu hết các vật thể thật sự trong ảnh đều được bao phủ bởi ít nhất một trong 2000 vùng đó.
 
-\textbf{Pipeline 3 giai đoạn rời rạc:}
-
-\begin{enumerate}
-	\item \textbf{Sinh vùng đề xuất (Region Proposal Generation):}
-	
-	Sử dụng \textbf{Selective Search} để sinh ra tập các vùng $\{R_i\}_{i=1}^N$, với $N \approx 2000$.
-	
-	\textbf{Phân tích:}
-	\begin{itemize}
-		\item Selective Search dựa trên phân đoạn ảnh và heuristic (color, texture, size) → không học được.
-		\item Đảm bảo recall cao: xác suất bỏ sót object thấp, nhưng tạo nhiều vùng dư thừa.
-		\item Dẫn đến độ phức tạp cao ở các bước sau:
-		\[
-		O(N) \text{ forward passes qua CNN}
-		\]
-	\end{itemize}
-	
-	---
-	
-	\item \textbf{Trích xuất đặc trưng CNN (CNN Feature Extraction):} 
-	
-	Mỗi vùng $R_i$ được warp về kích thước cố định $H \times W$ và đưa qua CNN:
-	\[
-	\mathbf{f}_i = \phi(R_i) = \text{CNN}(R_i) \in \mathbb{R}^{d}, \quad d = 4096
-	\]
-	
-	\textbf{Phân tích biểu diễn:}
-	\begin{itemize}
-		\item CNN học một ánh xạ phi tuyến:
-		\[
-		\phi: \mathbb{R}^{H \times W \times 3} \rightarrow \mathbb{R}^d
-		\]
-		\item Không gian đặc trưng $\mathbb{R}^d$ có tính chất:
-		\[
-		\exists \ \mathbf{w}_c \ \text{s.t.} \ \mathbf{w}_c^\top \mathbf{f}_i \gg \mathbf{w}_{c'}^\top \mathbf{f}_i
-		\]
-		→ các lớp trở nên gần tuyến tính phân tách.
-		
-		\item Tuy nhiên, phép \textbf{warping} gây méo hình học:
-		\begin{itemize}
-			\item Mất tỷ lệ khung hình ban đầu
-			\item Làm suy giảm thông tin không gian → ảnh hưởng localization
-		\end{itemize}
-	\end{itemize}
-	
-	---
-	
-	\item \textbf{Phân loại và Hồi quy bounding box:} 
-	
-	\begin{itemize}
-		\item \textbf{Phân loại:} 
-		
-		Mỗi vector $\mathbf{f}_i$ được đưa vào các SVM tuyến tính:
-		\[
-		s_c = \mathbf{w}_c^\top \mathbf{f}_i + b_c
-		\]
-		
-		\textbf{Phân tích:}
-		\begin{itemize}
-			\item Đây là một bộ phân loại tuyến tính trên embedding CNN.
-			\item Việc tách CNN và SVM làm mất khả năng học joint representation.
-		\end{itemize}
-		
-		---
-		
-		\item \textbf{Hồi quy bounding box:} 
-		
-		Mô hình học các offset tương đối:
-		\[
-		t_x = \frac{x - x_a}{w_a}, \quad
-		t_y = \frac{y - y_a}{h_a}, \quad
-		t_w = \log \frac{w}{w_a}, \quad
-		t_h = \log \frac{h}{h_a}
-		\]
-		
-		\textbf{Phân tích tham số hóa:}
-		\begin{itemize}
-			\item Chuẩn hóa theo $(w_a, h_a)$ giúp giảm variance giữa các box.
-			\item Hàm log chuyển bài toán scale:
-			\[
-			w = w_a e^{t_w}
-			\]
-			→ từ multiplicative sang additive → dễ học hơn.
-		\end{itemize}
-		
-		\textbf{Hàm mất mát:}
-		\[
-		L_{\text{bbox}} = \sum_{i} \mathbf{1}_{\{c_i \ge 1\}} \sum_{j \in \{x,y,w,h\}} (t_{ij} - t^*_{ij})^2
-		\]
-		
-		\textbf{Phân tích gradient:}
-		\begin{itemize}
-			\item Loss chỉ áp dụng cho positive samples → tránh nhiễu từ background.
-			\item Với tham số log-scale:
-			\[
-			\frac{\partial L}{\partial t_w} \propto \frac{\partial L}{\partial w} \cdot w
-			\]
-			→ gradient tỷ lệ với kích thước box → cân bằng giữa object nhỏ và lớn.
-		\end{itemize}
-		
-		---
-		
-		\item \textbf{Loss tổng thể:}
-		\[
-		\mathcal{L}_{\text{R-CNN}} = \sum_i L_{\text{cls}} + \lambda \sum_i L_{\text{bbox}}
-		\]
-		
-		\textbf{Lưu ý:} các thành phần loss không được tối ưu đồng thời trong một mạng thống nhất.
-		
-	\end{itemize}
-
-	
-\end{enumerate}
-\begin{center} 
+\begin{center}
 	\includegraphics[width=1.0\textwidth]
-	{images/rcnn_pipeline_diagram.png} 
-	\captionof{figure}{Pipeline 3 giai đoạn của R-CNN. CNN chạy trên từng vùng đề xuất, SVM phân loại, bộ hồi quy điều chỉnh bounding box.} 
-	\label{fig:rcnn_pipeline} 
+	{images/selective_search.png}
+	\captionof{figure}{Cách Selective Search hoạt động: thuật toán phân cụm dựa trên màu sắc, kết cấu và kích thước để đề xuất các vùng có khả năng chứa vật thể.}
+	\label{fig:rcnn_pipeline}
 \end{center}
----
 
-\textbf{Huấn luyện: Pipeline rời rạc}
+\textbf{Bước 2 — Trích xuất đặc trưng bằng CNN.}
+Mỗi trong 2000 vùng được cắt ra từ ảnh gốc, sau đó \textit{warp} (co giãn cưỡng bức) về kích thước cố định $227 \times 227$ pixel --- đây là kích thước đầu vào của AlexNet, backbone mà R-CNN sử dụng. Từng vùng riêng lẻ được đưa qua CNN và thu về một vector đặc trưng $\mathbf{f}_i \in \mathbb{R}^{4096}$. Đây là bước tốn kém nhất: với 2000 vùng, mô hình phải chạy \textbf{2000 lần forward pass} qua CNN cho mỗi bức ảnh, khiến thời gian inference lên tới $\sim 47$ giây/ảnh.
 
-R-CNN không được huấn luyện end-to-end mà gồm nhiều bước:
+Thao tác warp làm mất tỷ lệ khung hình ban đầu của vùng đề xuất --- một con người cao gầy sẽ bị kéo thành béo, một chiếc xe ô tô nằm ngang bị bóp méo thành hình vuông --- nhưng đây là sự đánh đổi chấp nhận được để CNN có đầu vào kích thước nhất quán.
 
-\begin{itemize}
-	\item Fine-tune CNN trên các region proposals → học feature $\phi$.
-	\item Train SVM trên $\mathbf{f}_i$ → học classifier.
-	\item Train regressor riêng → học localization.
-\end{itemize}
+\textbf{Bước 3 — Phân loại bằng SVM.}
+Sau khi có vector đặc trưng $\mathbf{f}_i$, R-CNN \textit{không} dùng lớp softmax của CNN để phân loại. Thay vào đó, nó huấn luyện một bộ \textbf{SVM tuyến tính riêng biệt cho mỗi lớp vật thể}. Với bài toán PASCAL VOC 20 lớp cần 20 SVM; với 200 lớp ImageNet Detection cần 200 SVM. Lý do dùng SVM thay vì softmax là vì tại thời điểm 2014, SVM huấn luyện trên đặc trưng CNN cho độ chính xác cao hơn --- một dấu hiệu cho thấy fine-tuning CNN trực tiếp cho detection chưa được tối ưu hoàn toàn.
 
-\textbf{Hệ quả:}
-\begin{itemize}
-	\item Gradient không thể lan truyền từ detection về feature extractor.
-	\item Representation không tối ưu cho toàn bộ pipeline.
-\end{itemize}
+\begin{mdframed}[style=infobox]
+\textbf{Intersection over Union (IoU) và Non-Maximum Suppression (NMS)}
 
----
+Hai khái niệm này xuất hiện ở khắp mọi bộ phát hiện vật thể, và R-CNN là nơi chúng được hệ thống hóa rõ ràng lần đầu.
 
-\textbf{Phân tích độ phức tạp:}
-
+\textbf{IoU} đo mức độ chồng lấp giữa bounding box dự đoán $A$ và ground-truth $B$:
 \[
-\text{Cost} \approx N \cdot \text{CNN}(R_i)
+\text{IoU}(A, B) = \frac{\text{Area}(A \cap B)}{\text{Area}(A \cup B)}
 \]
+IoU = 1 nghĩa là hai box hoàn toàn trùng nhau; IoU = 0 nghĩa là không có điểm chung. Trong R-CNN, một vùng đề xuất được coi là \textit{positive} (chứa vật thể) nếu IoU với ground-truth $\geq 0.5$, và \textit{negative} (nền) nếu IoU $< 0.3$. Các vùng có IoU nằm trong khoảng $[0.3, 0.5)$ bị bỏ qua khi huấn luyện để tạo margin phân cách rõ ràng.
 
-Với $N \approx 2000$:
-\begin{itemize}
-	\item Thời gian inference $\sim 47s$/ảnh
-	\item Redundant computation do các vùng chồng lấp lớn
-\end{itemize}
+\textbf{NMS} giải quyết tình trạng nhiều vùng cùng phát hiện một vật thể. Thuật toán hoạt động theo nguyên tắc greedy: (1) chọn box có score cao nhất làm đại diện, (2) loại bỏ tất cả box khác có IoU với box đó vượt ngưỡng $\tau$ (thường 0.5), (3) lặp lại cho đến khi không còn box nào. Kết quả là mỗi vật thể chỉ còn một bounding box tốt nhất.
+\end{mdframed}
 
----
+\textbf{Bước 4 — Tinh chỉnh vị trí bằng hồi quy bounding box.}
+SVM cho biết \textit{vùng đó chứa gì}, nhưng vùng đề xuất từ Selective Search thường không khớp hoàn hảo với vật thể thực sự. Bước cuối cùng là dùng một mô hình hồi quy tuyến tính để tinh chỉnh tọa độ. Thay vì dự đoán tọa độ tuyệt đối, mô hình học các \textit{offset tương đối} so với vùng đề xuất ban đầu $(x_a, y_a, w_a, h_a)$:
+\[
+t_x = \frac{x^* - x_a}{w_a}, \quad t_y = \frac{y^* - y_a}{h_a}, \quad t_w = \log \frac{w^*}{w_a}, \quad t_h = \log \frac{h^*}{h_a}
+\]
+trong đó $(x^*, y^*, w^*, h^*)$ là ground-truth. Hàm log cho $t_w, t_h$ giúp chuẩn hóa bài toán: thay vì học tỷ lệ nhân (multiplicative scale), mô hình chỉ cần học phép cộng trên log-scale --- dễ hội tụ hơn nhiều và cân bằng gradient giữa vật thể nhỏ và lớn.
 
-\textbf{Hạn chế:}
-\begin{itemize}
-	\item \textbf{Tính toán dư thừa:} cùng một vùng ảnh được xử lý nhiều lần.
-	\item \textbf{Không end-to-end:} pipeline bị tách rời → không tối ưu joint.
-	\item \textbf{Warping distortion:} làm mất thông tin hình học.
-	\item \textbf{Memory footprint lớn:} lưu feature cho hàng nghìn RoI.
-\end{itemize}
+\begin{center}
+	\includegraphics[width=1.0\textwidth]
+	{images/rcnn_pipeline_diagram.png}
+	\captionof{figure}{Pipeline của R-CNN gồm 4 bước: Selective Search đề xuất $\sim$2000 vùng, mỗi vùng được warp và đưa qua CNN riêng lẻ, SVM phân loại từng vùng, và bộ hồi quy tinh chỉnh bounding box.}
+	\label{fig:rcnn_pipeline_diagram}
+\end{center}
 
----
+\textbf{Huấn luyện — Ba giai đoạn rời rạc.}
+R-CNN không thể được huấn luyện end-to-end trong một bước. Quá trình gồm ba giai đoạn hoàn toàn tách biệt: (1) \textbf{Pre-train CNN} trên ImageNet để có backbone mạnh; (2) \textbf{Fine-tune CNN} trên dữ liệu detection với các vùng có IoU $\geq 0.5$ là positive và còn lại là negative; (3) \textbf{Train SVM và bộ hồi quy} riêng lẻ trên các đặc trưng đã được lưu vào đĩa từ bước trước.
 
+Sự tách biệt này có một hệ quả kiến trúc quan trọng: gradient từ SVM và bộ hồi quy \textit{không} lan truyền ngược về CNN. CNN không biết rằng đặc trưng nó tạo ra cuối cùng được dùng để phân loại và định vị --- nó chỉ được fine-tune cho mục đích phân loại thông thường. Đây là một điểm yếu cơ bản của toàn bộ pipeline.
 
-R-CNN chứng minh rằng:
-\begin{itemize}
-	\item CNN có thể học representation mạnh cho detection.
-	\item Tuy nhiên, bottleneck chính nằm ở \textbf{việc lặp lại computation theo từng region}.
-\end{itemize}
+Ngoài ra, một kỹ thuật quan trọng giúp cải thiện SVM là \textbf{Hard Negative Mining}: sau mỗi vòng huấn luyện, chọn lọc những negative samples mà mô hình đang phân loại sai (những vùng nền bị nhầm là vật thể) và thêm chúng vào tập huấn luyện lần sau. Điều này tránh để mô hình lãng phí dung lượng trên những ví dụ nền quá dễ.
 
-Đây chính là động lực dẫn đến Fast R-CNN: \textit{chia sẻ feature thay vì tính lại từ đầu}.
+\textbf{Tổng kết.}
+R-CNN tăng mAP trên PASCAL VOC 2012 từ 40.9\% (DPM) lên \textbf{53.3\%} --- một cú nhảy vọt chứng minh sức mạnh của CNN cho detection. Tuy nhiên, mô hình có ba hạn chế cấu trúc nghiêm trọng: (i) \textbf{chậm} ($\sim$47 giây/ảnh khi test, $\sim$84 giờ để train trên VOC) vì phải chạy CNN 2000 lần; (ii) \textbf{không end-to-end}, huấn luyện rời rạc không tối ưu joint, tốn bộ nhớ đĩa để lưu feature trung gian; (iii) \textbf{warping distortion} gây biến dạng hình học ảnh hưởng đến localization.
+
+Những hạn chế này chính là bản thiết kế cho Fast R-CNN: \textit{thay vì chạy CNN trên từng vùng, tại sao không chạy CNN một lần duy nhất trên toàn ảnh rồi chia sẻ kết quả?}
 
 \paragraph{Fast R-CNN (2015):}
-Để giải quyết "nút thắt cổ chai" về tính toán dư thừa của R-CNN, Ross Girshick đề xuất \textbf{Fast R-CNN} \cite{Girshick2015}, với ý tưởng cốt lõi là \textbf{chia sẻ computation trên toàn ảnh} thay vì xử lý từng vùng riêng lẻ.
+Vấn đề của R-CNN nằm ở một nghịch lý: để phân tích 2000 vùng đề xuất, nó phải chạy CNN 2000 lần --- dù phần lớn các vùng đó chồng chéo lên nhau và chia sẻ nhiều pixel chung. Năm 2015, Ross Girshick đề xuất \textbf{Fast R-CNN} \cite{Girshick2015} với một câu hỏi đơn giản: \textit{tại sao không chạy CNN một lần duy nhất trên toàn ảnh, rồi trích xuất đặc trưng của từng vùng từ kết quả đó?}
 
----
+\begin{center}
+	\includegraphics[width=0.95\textwidth]{images/fast_rcnn_architecture.png}
+	\captionof{figure}{Kiến trúc Fast R-CNN. Thay vì CNN chạy trên từng vùng riêng lẻ như R-CNN, toàn bộ ảnh được đưa qua CNN một lần duy nhất để tạo ra feature map chung. Mỗi vùng đề xuất sau đó được trích xuất từ feature map này thông qua RoI Pooling.}
+	\label{fig:fast_rcnn_arch}
+\end{center}
 
-\textbf{Cải tiến cốt lõi: Feature Sharing}
-
-Thay vì áp dụng CNN trên từng vùng đề xuất $R_i$, Fast R-CNN chỉ chạy CNN một lần trên toàn bộ ảnh:
+\textbf{Ý tưởng cốt lõi — Chia sẻ feature map.}
+Fast R-CNN chỉ chạy CNN \textit{một lần} trên toàn bộ ảnh đầu vào $I$, tạo ra một feature map chung:
 \[
-F = \phi(I) = \text{CNN}(I) \in \mathbb{R}^{C \times H' \times W'}
+F = \text{CNN}(I) \in \mathbb{R}^{C \times H' \times W'}
 \]
+Tất cả 2000 vùng đề xuất (vẫn được tạo bởi Selective Search) sau đó được \textit{chiếu lên} feature map $F$ thay vì chạy CNN riêng từng vùng. Trong R-CNN, một pixel thuộc vùng chồng lấp giữa nhiều proposal có thể được CNN xử lý hàng trăm lần; trong Fast R-CNN, mỗi pixel chỉ đi qua CNN \textbf{đúng một lần}. Điều này giảm độ phức tạp từ $O(N \cdot \text{CNN})$ xuống $O(\text{CNN}) + O(N)$ --- một bậc giảm theo hệ số $N \approx 2000$.
 
-Các vùng đề xuất ${R_i}$ sau đó được ánh xạ (project) lên feature map $F$.
-
-\textbf{Phân tích:}
-\begin{itemize}
-	\item Trong R-CNN: cùng một pixel có thể được xử lý $\sim 2000$ lần.
-	\item Trong Fast R-CNN: mỗi pixel chỉ đi qua CNN đúng một lần.
-\end{itemize}
-
+\textbf{RoI Projection — Ánh xạ vùng lên feature map.}
+Một vùng đề xuất $R_i = (x_1, y_1, x_2, y_2)$ trên ảnh gốc được chiếu xuống feature map theo tỷ lệ stride $s$ của CNN:
 \[
-\text{Cost}*{\text{R-CNN}} = O(N \cdot \text{CNN}), \quad
-\text{Cost}*{\text{Fast}} = O(\text{CNN}) + O(N)
+R_i' = \left(\left\lfloor\frac{x_1}{s}\right\rfloor,\ \left\lfloor\frac{y_1}{s}\right\rfloor,\ \left\lfloor\frac{x_2}{s}\right\rfloor,\ \left\lfloor\frac{y_2}{s}\right\rfloor\right)
 \]
+Phép làm tròn tọa độ ở bước này gây ra sai số lượng tử hóa nhỏ --- đây chính là điểm yếu sẽ được Mask R-CNN khắc phục sau này bằng RoIAlign.
 
-→ Giảm bậc độ phức tạp theo hệ số $\sim N$.
-
----
-
-\textbf{RoI Projection:}
-
-Một RoI trên ảnh gốc $R_i = (x_1, y_1, x_2, y_2)$ được chiếu lên feature map:
-\[
-R_i' = \left(\frac{x_1}{s}, \frac{y_1}{s}, \frac{x_2}{s}, \frac{y_2}{s}\right)
-\]
-
-trong đó $s$ là stride của CNN.
-
-\textbf{Lưu ý:}
-\begin{itemize}
-	\item Đây là phép biến đổi affine.
-	\item Tọa độ thường bị làm tròn → gây sai lệch không gian (quantization).
-\end{itemize}
-
----
-
-\textbf{RoI Pooling: Chuẩn hóa kích thước đặc trưng}
-
-Để xử lý các RoI có kích thước khác nhau, Fast R-CNN sử dụng RoI Pooling để ánh xạ mỗi vùng về kích thước cố định.
+\textbf{RoI Pooling — Chuẩn hóa kích thước đặc trưng.}
+Sau khi chiếu, mỗi vùng $R_i'$ trên feature map có kích thước khác nhau. Fast R-CNN dùng \textbf{RoI Pooling} để đưa tất cả về kích thước cố định $H_f \times W_f$ (thường là $7 \times 7$):
 
 \begin{enumerate}
-	\item Chia $R_i'$ thành lưới $H_f \times W_f$ bins.
-	
-
-	\item Với mỗi bin $(u,v)$:
-	\[
-	f_i^{(u,v)} = \max_{(x,y) \in \text{bin}(u,v)} F(x,y)
-	\]
-	
-	\item Flatten thành vector:
-	\[
-	\mathbf{f}_i = \text{Flatten}(f_i) \in \mathbb{R}^d
-	\]
-
-	
+	\item Chia vùng $R_i'$ thành lưới $H_f \times W_f$ ô (bins) có kích thước xấp xỉ bằng nhau.
+	\item Áp dụng max-pooling trong mỗi bin: $f_i^{(u,v)} = \max_{(x,y) \in \text{bin}(u,v)} F(x,y)$
+	\item Flatten kết quả thành vector đặc trưng $\mathbf{f}_i \in \mathbb{R}^{C \cdot H_f \cdot W_f}$
 \end{enumerate}
 
----
+Kỹ thuật này cho phép Fast R-CNN xử lý các vùng đề xuất có kích thước tùy ý mà không cần warping như R-CNN --- không còn biến dạng hình học.
 
-\textbf{Phân tích toán học của RoI Pooling:}
-
-\begin{itemize}
-	\item RoI Pooling là một phép ánh xạ:
-	\[
-	\mathcal{P}: \mathbb{R}^{C \times H' \times W'} \rightarrow \mathbb{R}^{C \times H_f \times W_f}
-	\]
-	
-
-	\item Mỗi output phụ thuộc vào một tập con của feature map:
-	\[
-	f_i^{(u,v)} = \max_{(x,y) \in \Omega_{uv}} F(x,y)
-	\]
-
-	
-\end{itemize}
-
----
-
-\textbf{Gradient flow qua RoI Pooling:}
-
-Do sử dụng max-pooling, gradient có dạng:
-
-\[
-\frac{\partial L}{\partial F(x,y)} =
-\begin{cases}
-	\frac{\partial L}{\partial f_i^{(u,v)}} & \text{nếu } (x,y) = \arg\max \
-	0 \& \text{ngược lại}
-\end{cases}
-\]
-
-\textbf{Hệ quả:}
-\begin{itemize}
-	\item Gradient rất sparse (chỉ đi qua vị trí max).
-	\item Có thể gây mất thông tin gradient.
-\end{itemize}
-
----
-
-\textbf{Vấn đề lượng tử hóa (Quantization Error):}
-
-\begin{itemize}
-	\item Tọa độ RoI bị làm tròn khi chia bins.
-	\item Các pixel biên có thể bị bỏ qua hoặc gán sai bin.
-\end{itemize}
-
-\[
-\Delta x \approx \frac{1}{s}
-\]
-
-→ Sai số này đặc biệt ảnh hưởng tới localization chính xác, và là động lực cho RoIAlign sau này.
-
----
-
-\textbf{Head Network:}
-
-Feature $\mathbf{f}_i$ được đưa qua các fully-connected layers:
-\[
-\mathbf{h}_i = \sigma(W \mathbf{f}_i + b)
-\]
-
-Sau đó tách thành hai nhánh:
-\begin{itemize}
-	\item Classification: $p_i = \text{softmax}(W_c \mathbf{h}_i)$
-	\item Regression: $t_i = W_r \mathbf{h}_i$
-\end{itemize}
-
----
-
-\textbf{Loss Function: Multi-task Learning}
-
-\[
-\mathcal{L} = L_{\text{cls}}(p_i, c_i^*) + \lambda \mathbf{1}_{{c_i^* \ge 1}} L_{\text{reg}}(t_i, t_i^*)
-\]
-
-\textbf{Phân tích:}
-
-\begin{itemize}
-	\item Classification:
-	\[
-	L_{\text{cls}} = -\log p_i[c_i^*]
-	\]
-	
-
-	\item Regression (Smooth L1):
-	\[
-	\text{SmoothL1}(x) =
-	\begin{cases}
-		0.5x^2 & |x| < 1 \\
-		|x| - 0.5 & \text{otherwise}
-	\end{cases}
-	\]
-
-	
-\end{itemize}
-
-
-
-\textbf{Tại sao dùng Smooth L1?}
-
-\begin{itemize}
-	\item L2 loss: nhạy với outliers
-	\item L1 loss: gradient không ổn định tại 0
-\end{itemize}
-
-Smooth L1 kết hợp cả hai:
-\begin{itemize}
-	\item Quadratic gần 0 → ổn định
-	\item Linear khi lớn → robust với outliers
-\end{itemize}
-
----
-
-\textbf{Gradient tổng:}
-
-\[
-\nabla \mathcal{L} = \nabla L_{\text{cls}} + \lambda \nabla L_{\text{reg}}
-\]
-
-\textbf{Ý nghĩa:}
-\begin{itemize}
-	\item Backbone học representation chung cho:
-	\begin{itemize}
-		\item Phân biệt class
-		\item Định vị object
-	\end{itemize}
-	\item Đây là dạng \textbf{multi-task representation learning}
-\end{itemize}
-
----
-
-\textbf{Huấn luyện end-to-end:}
-
-\begin{itemize}
-	\item Gradient lan truyền:
-	\[
-	\text{Loss} \rightarrow \text{FC layers} \rightarrow \text{RoI Pooling} \rightarrow F \rightarrow \text{CNN}
-	\]
-	
-	```
-	\item Khác với R-CNN:
-	\begin{itemize}
-		\item Không cần SVM riêng
-		\item Không cần train regressor riêng
-	\end{itemize}
-	```
-	
-\end{itemize}
-
-\textbf{Giới hạn:} Selective Search vẫn là bước ngoài mô hình → không thể tối ưu.
-
-\begin{center} 
-	\includegraphics[width=0.8\textwidth]{images/roi_pooling_diagram.png} \captionof{figure}{Hoạt động của RoI Pooling. Một vùng đề xuất có kích thước bất kỳ trên feature map được chia lưới cố định và max-pooling được áp dụng.} \label{fig:roi_pooling} 
+\begin{center}
+	\includegraphics[width=0.8\textwidth]{images/roi_pooling_diagram.png}
+	\captionof{figure}{Minh họa RoI Pooling: một vùng đề xuất kích thước bất kỳ trên feature map được chia thành lưới $H_f \times W_f$ cố định, max-pooling áp dụng trên từng ô.}
+	\label{fig:roi_pooling}
 \end{center}
----
 
-\textbf{Ưu điểm so với R-CNN:}
+\begin{center}
+	\includegraphics[width=0.75\textwidth]{images/roi_pooling_lilian.png}
+	\captionof{figure}{Ví dụ cụ thể RoI Pooling: vùng $5 \times 7$ trên feature map được chia thành lưới $2 \times 2$, mỗi ô lấy giá trị max. Kết quả luôn là tensor $2 \times 2$ bất kể kích thước đầu vào.}
+	\label{fig:roi_pooling_detail}
+\end{center}
 
+\textbf{Đầu phân loại và hồi quy (Head Network).}
+Vector đặc trưng $\mathbf{f}_i$ sau RoI Pooling được đưa qua các fully-connected layers rồi tách thành \textit{hai nhánh song song}:
 \begin{itemize}
-	\item Giảm chi phí tính toán từ $O(N \cdot \text{CNN})$ xuống gần $O(\text{CNN})$
-	\item Huấn luyện gần như end-to-end
-	\item Chia sẻ feature → tăng hiệu quả và giảm memory
+	\item \textbf{Nhánh phân loại:} $p_i = \text{softmax}(W_c \mathbf{f}_i) \in \mathbb{R}^{K+1}$ — xác suất cho $K$ lớp vật thể cộng với lớp nền. Không cần SVM nữa!
+	\item \textbf{Nhánh hồi quy:} $t_i = W_r \mathbf{f}_i \in \mathbb{R}^{4K}$ — offsets bounding box cho từng lớp.
 \end{itemize}
 
----
+\textbf{Hàm mất mát multi-task.}
+Fast R-CNN được huấn luyện end-to-end với một hàm mất mát duy nhất tối ưu cả phân loại lẫn định vị cùng lúc:
+\[
+\mathcal{L} = L_{\text{cls}}(p_i,\, c_i^*) + \lambda \cdot \mathbf{1}[c_i^* \geq 1] \cdot L_{\text{reg}}(t_i,\, t_i^*)
+\]
 
-\textbf{Hạn chế:}
+Trong đó $c_i^*$ là nhãn ground-truth và $\mathbf{1}[c_i^* \geq 1]$ đảm bảo loss hồi quy chỉ tính khi đó là vật thể thật (không tính với nền). Thành phần phân loại dùng cross-entropy chuẩn:
+\[
+L_{\text{cls}} = -\log p_i[c_i^*]
+\]
+
+Còn thành phần hồi quy dùng \textbf{Smooth L1 loss} thay vì MSE:
+\[
+\text{Smooth}_{L_1}(x) = \begin{cases} 0.5x^2 & \text{nếu } |x| < 1 \\ |x| - 0.5 & \text{ngược lại} \end{cases}
+\]
+
+\begin{center}
+	\includegraphics[width=0.60\textwidth]{images/smooth_l1_loss.png}
+	\captionof{figure}{So sánh hình dạng của Smooth L1, L1 và L2 loss. Smooth L1 hành xử như L2 (quadratic) khi sai số nhỏ --- ổn định gradient --- và như L1 (linear) khi sai số lớn --- robust với outlier.}
+	\label{fig:smooth_l1}
+\end{center}
+
+Lý do dùng Smooth L1: L2 loss phạt rất mạnh các outlier (bounding box dự đoán sai nhiều), khiến gradient bùng nổ; trong khi L1 thuần túy có gradient không liên tục tại 0 gây mất ổn định. Smooth L1 kết hợp ưu điểm của cả hai: mượt mà gần 0 và chịu đựng tốt outlier.
+
+\textbf{Huấn luyện end-to-end và tăng tốc đáng kể.}
+Khác với R-CNN cần 3 giai đoạn riêng biệt, Fast R-CNN được huấn luyện \textit{trong một bước duy nhất}: gradient từ loss lan truyền ngược qua head network, qua RoI Pooling, qua feature map, và về tận CNN backbone. Điều này có nghĩa là CNN được fine-tune trực tiếp cho mục tiêu detection --- không còn rào cản giữa classifier và feature extractor. Kết quả:
 
 \begin{itemize}
-	\item Phụ thuộc Selective Search (bottleneck ngoài mạng)
-	\item RoI Pooling gây mất chính xác do quantization
-	\item Gradient sparse qua max-pooling
+	\item Thời gian train giảm từ 84 giờ (R-CNN) xuống còn \textbf{9.5 giờ} trên VOC 2007
+	\item Thời gian test giảm từ 47 giây/ảnh xuống còn \textbf{0.32 giây/ảnh} (không tính Selective Search)
+	\item mAP trên VOC 2007 tăng từ 66.0\% (R-CNN) lên \textbf{70.0\%}
 \end{itemize}
 
----
+\begin{mdframed}[style=infobox]
+\textbf{Bottleneck cuối cùng: Selective Search}
 
-
-Fast R-CNN cho thấy rằng:
-\begin{itemize}
-	\item \textbf{Chia sẻ feature là chìa khóa để mở rộng CNN cho detection}
-	\item Bottleneck còn lại không phải là CNN, mà là \textbf{region proposal}
-\end{itemize}
+Với Fast R-CNN, thời gian inference trên GPU chỉ còn 0.32 giây/ảnh cho phần CNN. Tuy nhiên, \textit{Selective Search} vẫn chạy trên CPU và chiếm khoảng \textbf{2 giây/ảnh} --- gấp 6 lần phần CNN! Nói cách khác, bottleneck không còn là mạng nơ-ron mà là bước tạo proposal ngoài mô hình. Đây chính là lý do Faster R-CNN ra đời: thay Selective Search bằng một mạng nơ-ron có thể học được và chạy trên GPU.
+\end{mdframed}
 
 Đây chính là động lực dẫn đến Faster R-CNN với Region Proposal Network.
 
 
 \paragraph{Faster R-CNN (2016):}
-\textbf{Faster R-CNN} \cite{Ren2015} giải quyết nút thắt cuối cùng của Fast R-CNN bằng cách thay thế hoàn toàn Selective Search bằng một module học được: \textbf{Region Proposal Network (RPN)}.
+Khi Fast R-CNN ra đời, bottleneck không còn là CNN nữa --- mà là \textbf{Selective Search} đang chạy trên CPU, chiếm $\sim$2 giây/ảnh trong khi toàn bộ phần CNN chỉ mất 0.32 giây. Câu hỏi đặt ra: \textit{nếu ta có thể học cách phát hiện vật thể bằng mạng nơ-ron, tại sao không học luôn cả cách đề xuất vùng?} Đây chính là đột phá của \textbf{Faster R-CNN} \cite{Ren2015} — thay thế hoàn toàn Selective Search bằng một mạng nơ-ron có thể học được, chạy trên GPU và chia sẻ feature với detector chính.
 
-\textbf{Ý tưởng cốt lõi:}
-Sinh vùng đề xuất không còn là một bước heuristic độc lập, mà trở thành một bài toán học có giám sát, chia sẻ feature với detector chính.
+\begin{center}
+	\includegraphics[width=0.90\textwidth]{images/faster_rcnn_overview.png}
+	\captionof{figure}{Các anchor box được đặt tại mỗi vị trí trên feature map với nhiều kích thước và tỷ lệ khung hình khác nhau. RPN học dự đoán: anchor nào chứa vật thể (objectness score) và cần dịch chuyển bao nhiêu để khớp với vật thể thực.}
+	\label{fig:faster_rcnn_overview}
+\end{center}
 
----
+\textbf{Kiến trúc tổng thể — Ba thành phần chia sẻ feature.}
+Faster R-CNN gồm ba thành phần chính, cùng dùng chung một feature map $F$:
+\begin{enumerate}
+	\item \textbf{Backbone CNN} (thường là VGG-16 hoặc ResNet): chạy \textit{một lần} trên toàn ảnh, tạo ra feature map $F \in \mathbb{R}^{C \times H' \times W'}$.
+	\item \textbf{Region Proposal Network (RPN)}: nhận $F$ làm đầu vào, đề xuất các vùng có khả năng chứa vật thể.
+	\item \textbf{Fast R-CNN detection head}: nhận $F$ và các vùng đề xuất từ RPN, phân loại và tinh chỉnh bounding box.
+\end{enumerate}
 
-\textbf{Feature Sharing:}
+Điểm mấu chốt: RPN và detection head \textit{dùng chung backbone} --- không có phép tính nào bị lặp lại. Điều này đồng nghĩa với việc đề xuất vùng giờ đây gần như miễn phí về mặt tính toán.
 
+\textbf{Region Proposal Network (RPN) — Học cách nhìn.}
+RPN là một \textbf{Fully Convolutional Network} nhỏ trượt trên feature map $F$ bằng cửa sổ $3 \times 3$. Tại mỗi vị trí $(i,j)$ trên feature map, RPN đặt $k = 9$ \textbf{anchor box} --- các hộp tham chiếu với 3 kích thước (128, 256, 512 pixel) và 3 tỷ lệ khung hình (1:1, 1:2, 2:1). Với feature map $H' \times W'$, tổng số anchor trong toàn ảnh là $H' \times W' \times 9$ --- thường khoảng 20.000 anchor cho ảnh $600 \times 1000$ pixel.
+
+\begin{center}
+	\includegraphics[width=0.95\textwidth]{images/rpn_anchors.png}
+	\captionof{figure}{Kiến trúc tổng quan Faster R-CNN: backbone CNN tạo ra feature map dùng chung cho cả RPN (sinh vùng đề xuất) và Fast R-CNN head (phân loại và tinh chỉnh box). Toàn bộ pipeline chạy trên GPU, không còn phụ thuộc Selective Search.}
+	\label{fig:rpn_anchors}
+\end{center}
+
+Với mỗi anchor, RPN dự đoán hai thứ song song:
+\begin{itemize}
+	\item \textbf{Objectness score} $p_i \in [0,1]$: xác suất anchor chứa vật thể (foreground) hay chỉ là nền (background).
+	\item \textbf{Bounding box offset} $(t_x, t_y, t_w, t_h)$: độ lệch cần thiết để biến anchor thành proposal khớp với vật thể hơn:
+\end{itemize}
 \[
-F = \phi(I) = \text{CNN}(I) \in \mathbb{R}^{C \times H' \times W'}
+t_x = \frac{x^* - x_a}{w_a},\quad t_y = \frac{y^* - y_a}{h_a},\quad t_w = \log\frac{w^*}{w_a},\quad t_h = \log\frac{h^*}{h_a}
 \]
 
-Feature map $F$ được dùng chung cho:
+\textbf{Gán nhãn anchor trong huấn luyện.}
+Để huấn luyện RPN, mỗi anchor cần được gán nhãn \textit{positive} hoặc \textit{negative} dựa trên IoU với ground-truth:
 \begin{itemize}
-	\item RPN (proposal generation)
-	\item Fast R-CNN head (classification + regression)
+	\item \textbf{Positive}: anchor có IoU $\geq 0.7$ với bất kỳ ground-truth nào, \textit{hoặc} anchor có IoU cao nhất với một ground-truth (đảm bảo mỗi ground-truth luôn có ít nhất một anchor positive).
+	\item \textbf{Negative}: anchor có IoU $< 0.3$ với \textit{mọi} ground-truth.
+	\item \textbf{Bỏ qua}: anchor nằm trong khoảng $[0.3, 0.7)$ --- vùng mơ hồ, không dùng để tính loss tránh nhiễu gradient.
 \end{itemize}
 
-\textbf{Ý nghĩa:}
-\begin{itemize}
-	\item Giảm chi phí tính toán
-	\item Cho phép học representation tối ưu cho cả hai nhiệm vụ
-\end{itemize}
+Vì số anchor negative (nền) nhiều hơn positive gấp hàng chục lần, RPN dùng \textbf{mini-batch sampling}: mỗi ảnh lấy ngẫu nhiên 256 anchor với tỷ lệ positive:negative tối đa là 1:1 (nếu không đủ positive thì lấy thêm negative bù vào).
 
----
-
-\textbf{Region Proposal Network (RPN):}
-
-RPN là một Fully Convolutional Network trượt trên $F$:
-
+\textbf{Hàm mất mát của RPN.}
+RPN được tối ưu với hàm mất mát multi-task:
 \[
-z_{ij} = \text{Conv}*{3\times3}(F)*{ij}
+\mathcal{L}_{\text{RPN}} = \frac{1}{N_{\text{cls}}} \sum_i L_{\text{cls}}(p_i,\, p_i^*) + \lambda \cdot \frac{1}{N_{\text{reg}}} \sum_i p_i^* \cdot L_{\text{reg}}(t_i,\, t_i^*)
 \]
 
-Tại mỗi vị trí $(i,j)$:
+Trong đó $p_i^*$ là nhãn ground-truth (1 nếu positive, 0 nếu negative), đóng vai trò mask để chỉ tính regression loss cho các anchor positive. $N_{\text{cls}}$ và $N_{\text{reg}}$ là các hệ số chuẩn hóa giúp cân bằng hai thành phần loss.
+
+\textbf{Từ anchor đến proposal — Lọc qua NMS.}
+Sau khi RPN chạy, mỗi anchor được biến thành một proposal bằng cách áp dụng offset dự đoán. Tiếp theo:
+\begin{enumerate}
+	\item Loại bỏ các proposal vượt ra ngoài biên ảnh.
+	\item Sắp xếp theo objectness score, giữ top-$N$ cao nhất (thường $N = 6000$ khi train, 300 khi test).
+	\item Áp dụng NMS với ngưỡng IoU = 0.7 để loại proposal trùng lặp.
+	\item Kết quả: $\sim$2000 proposal khi train, $\sim$300 khi test.
+\end{enumerate}
+Những proposal này thay thế hoàn toàn output của Selective Search --- và được tạo ra \textit{trong vài mili giây} trên GPU thay vì 2 giây trên CPU.
+
+\textbf{Giai đoạn detection — Tái sử dụng feature map.}
+Các proposal từ RPN được đưa vào Fast R-CNN head \textit{trên cùng feature map $F$}: RoI Pooling trích xuất đặc trưng $7 \times 7$ cho từng proposal, sau đó head network phân loại lớp vật thể và tinh chỉnh lần cuối tọa độ bounding box. Loss toàn bộ mạng là tổng của RPN loss và detector loss:
 \[
-p_{ij} \in \mathbb{R}^{2k}, \quad t_{ij} \in \mathbb{R}^{4k}
+\mathcal{L} = \mathcal{L}_{\text{RPN}} + \mathcal{L}_{\text{detector}}
 \]
 
-\begin{itemize}
-	\item $k$: số anchor tại mỗi vị trí
-	\item $p_{ij}$: objectness scores
-	\item $t_{ij}$: bounding box offsets
-\end{itemize}
+\textbf{Chiến lược huấn luyện.}
+Faster R-CNN có hai cách huấn luyện: (1) \textbf{Alternating training} --- luân phiên train RPN rồi detector, lặp lại 4 lần --- đây là cách trong bài báo gốc; (2) \textbf{Approximate joint training} --- tối ưu đồng thời toàn bộ mạng trong một bước, nhanh hơn $\sim$1.5 lần và cho kết quả tương đương, được dùng phổ biến trong thực tế.
 
----
+\begin{mdframed}[style=infobox]
+\textbf{Kết quả và tầm quan trọng}
 
-\textbf{Anchor Boxes: Rời rạc hóa không gian tìm kiếm}
+Faster R-CNN đạt \textbf{73.2\% mAP} trên PASCAL VOC 2007 với VGG-16, vượt Fast R-CNN (70.0\%). Quan trọng hơn, tốc độ inference giảm từ $\sim$2.3 giây/ảnh (Fast R-CNN + Selective Search) xuống còn \textbf{0.2 giây/ảnh} --- gần 10 lần nhanh hơn. Đây là lần đầu tiên một two-stage detector đạt tốc độ gần real-time.
 
-Tại mỗi vị trí feature map, định nghĩa tập anchor:
-\[
-{a_l}_{l=1}^k, \quad a_l = (x_a, y_a, w_a, h_a)
-\]
+Faster R-CNN thiết lập kiến trúc chuẩn cho mọi two-stage detector sau này: \textbf{Backbone → RPN → RoI Pooling → Head}. Các mô hình như Mask R-CNN, Cascade R-CNN, hay DetectoRS đều xây dựng trực tiếp trên nền tảng này.
+\end{mdframed}
 
-\textbf{Phân tích:}
-\begin{itemize}
-	\item Anchor là các prior boxes cố định.
-	\item Chuyển bài toán từ:
-	\[
-	\text{predict arbitrary box} \rightarrow \text{predict offset từ anchor}
-	\]
-	\item Giảm độ khó của bài toán regression.
-\end{itemize}
-
----
-
-\textbf{Bounding Box Parameterization:}
-
-\[
-t_x = \frac{x - x_a}{w_a},\quad
-t_y = \frac{y - y_a}{h_a},\quad
-t_w = \log \frac{w}{w_a},\quad
-t_h = \log \frac{h}{h_a}
-\]
-
-\textbf{Ý nghĩa:}
-\begin{itemize}
-	\item Scale-invariant
-	\item Log-transform giúp linear hóa scale
-\end{itemize}
-
----
-
-\textbf{Gán nhãn anchor (Anchor Matching):}
-
-Anchor $a_i$ được gán nhãn dựa trên IoU với ground-truth:
-
-\begin{itemize}
-	\item Positive nếu:
-	\[
-	\text{IoU}(a_i, g) \geq 0.7
-	\]
-	\item Negative nếu:
-	\[
-	\text{IoU}(a_i, g) \leq 0.3
-	\]
-\end{itemize}
-
-Các anchor trung gian bị bỏ qua.
-
-\textbf{Hệ quả:}
-\begin{itemize}
-	\item Tạo margin rõ ràng giữa positive và negative
-	\item Tránh nhiễu trong gradient
-\end{itemize}
-
----
-
-\textbf{Vấn đề mất cân bằng (Class Imbalance):}
-
-\begin{itemize}
-	\item Số anchor background $\gg$ object
-	\item Nếu train toàn bộ → model bias về background
-\end{itemize}
-
-\textbf{Giải pháp: Mini-batch sampling}
-\begin{itemize}
-	\item Sample $\sim 256$ anchors / image
-	\item Tỷ lệ positive:negative $\approx 1:1$ hoặc $1:3$
-\end{itemize}
-
----
-
-\textbf{Hàm Loss của RPN:}
-
-\[
-\mathcal{L}*{\text{RPN}} =
-\frac{1}{N*{\text{cls}}} \sum_i L_{\text{cls}}(p_i, p_i^*)
-+
-\lambda \frac{1}{N_{\text{reg}}} \sum_i p_i^* L_{\text{reg}}(t_i, t_i^*)
-\]
-
-\textbf{Phân tích:}
-
-\begin{itemize}
-	\item $L_{\text{cls}}$: cross-entropy
-	\item $L_{\text{reg}}$: Smooth L1
-	\item $p_i^*$ đóng vai trò mask → chỉ regression cho positive anchors
-\end{itemize}
-
----
-
-\textbf{Chuẩn hóa loss:}
-
-\begin{itemize}
-	\item $N_{\text{cls}}$: số anchors trong batch
-	\item $N_{\text{reg}}$: số positive anchors
-\end{itemize}
-
-\textbf{Ý nghĩa:}
-\begin{itemize}
-	\item Cân bằng đóng góp giữa classification và regression
-	\item Tránh dominance của background samples
-\end{itemize}
-
----
-
-\textbf{Gradient Analysis:}
-
-\[
-\nabla \mathcal{L}*{\text{RPN}} =
-\frac{1}{N*{\text{cls}}} \sum \nabla L_{\text{cls}} +
-\lambda \frac{1}{N_{\text{reg}}} \sum p_i^* \nabla L_{\text{reg}}
-\]
-
-\textbf{Ý nghĩa:}
-\begin{itemize}
-	\item Gradient từ objectness và localization cùng cập nhật backbone
-	\item Backbone học representation phục vụ proposal generation
-\end{itemize}
-
----
-
-\textbf{Tích hợp với Fast R-CNN:}
-
-Pipeline:
-\begin{itemize}
-	\item RPN sinh proposals ${R_i}$
-	\item RoI Pooling trên $F$
-	\item Head network:
-	\begin{itemize}
-		\item Classification
-		\item Bounding box refinement
-	\end{itemize}
-\end{itemize}
-
----
-
-\textbf{Loss toàn bộ mạng:}
-
-\[
-\mathcal{L} = \mathcal{L}*{\text{RPN}} + \mathcal{L}*{\text{detector}}
-\]
-
-\textbf{Gradient flow toàn cục:}
-
-\[
-\text{Loss} \rightarrow \text{RPN + Head} \rightarrow F \rightarrow \text{CNN}
-\]
-
-→ toàn bộ pipeline được tối ưu end-to-end.
-
----
-
-\textbf{Huấn luyện:}
-
-\begin{itemize}
-	\item Alternating training:
-	\begin{itemize}
-		\item Train RPN
-		\item Train detector
-		\item Lặp lại
-	\end{itemize}
-	
-	```
-	\item Joint training:
-	\begin{itemize}
-		\item Tối ưu đồng thời toàn bộ mạng
-	\end{itemize}
-	```
-	
-\end{itemize}
-
----
-
-\textbf{Ưu điểm so với Fast R-CNN:}
-
-\begin{itemize}
-	\item Loại bỏ hoàn toàn bước proposal heuristic
-	\item Pipeline fully differentiable
-	\item Feature sharing giữa proposal và detection
-\end{itemize}
-
----
-
-Faster R-CNN chuyển bài toán:
-\begin{itemize}
-	\item Từ: \textit{generate proposals bằng heuristic}
-	\item Thành: \textit{học proposal như một bài toán classification + regression}
-\end{itemize}
-
-Đây là bước chuyển từ \textbf{pipeline rời rạc} sang \textbf{hệ thống học thống nhất}, đặt nền tảng cho toàn bộ các detector hiện đại.
+Đây là bước chuyển quyết định từ \textbf{pipeline rời rạc} (Selective Search ngoài mạng) sang \textbf{hệ thống học thống nhất hoàn toàn} --- đặt nền tảng vững chắc cho toàn bộ thế hệ detector hiện đại.
 
 
 \paragraph{Mask R-CNN (2017):}
-\textbf{Mask R-CNN} \cite{He2017} là sự mở rộng trực tiếp của Faster R-CNN, nhằm giải quyết bài toán \textbf{instance segmentation} — tức là không chỉ phát hiện và định vị vật thể, mà còn phân đoạn chính xác từng pixel của mỗi đối tượng.
+Nếu Faster R-CNN trả lời câu hỏi \textit{"Vật thể ở đâu?"} bằng một bounding box, thì \textbf{Mask R-CNN} \cite{He2017} của Kaiming He và cộng sự (Facebook AI Research) đặt ra câu hỏi tham vọng hơn: \textit{"Chính xác pixel nào thuộc về vật thể đó?"} Đây là bài toán \textbf{instance segmentation} --- không chỉ khoanh vùng vật thể bằng hộp chữ nhật mà còn vẽ ra đường viền chính xác từng pixel, phân biệt được từng cá thể ngay cả khi chúng chồng chéo nhau.
 
-\textbf{Ý tưởng cốt lõi:}
-Mở rộng bài toán detection từ:
-\[
-(c, b) \rightarrow (c, b, M)
-\]
-trong đó $M \in {0,1}^{H \times W}$ là mask nhị phân của từng instance.
+\begin{center}
+	\includegraphics[width=0.95\textwidth]{images/mask_rcnn_fig1.png}
+	\captionof{figure}{Mask R-CNN mở rộng bài toán detection sang instance segmentation: mỗi vật thể không chỉ được khoanh bằng bounding box mà còn được tô màu chính xác từng pixel, phân biệt rõ ràng từng cá thể riêng lẻ.}
+	\label{fig:mask_rcnn_result}
+\end{center}
 
----
+\textbf{Kiến trúc --- Thêm một nhánh, mở rộng một bài toán.}
+Mask R-CNN giữ nguyên toàn bộ pipeline của Faster R-CNN (Backbone → RPN → RoI feature extraction) và chỉ thêm \textit{một nhánh song song} vào detection head. Thay vì hai nhánh (phân loại + hồi quy box), giờ có ba nhánh chạy đồng thời trên mỗi RoI:
 
-\textbf{Kiến trúc tổng thể:}
-
-Mask R-CNN giữ nguyên pipeline của Faster R-CNN:
 \begin{itemize}
-	\item Backbone CNN → feature map $F$
-	\item RPN → proposals ${R_i}$
-	\item RoI feature extraction
+	\item \textbf{Classification head}: dự đoán xác suất từng lớp vật thể.
+	\item \textbf{Bounding box head}: tinh chỉnh tọa độ hộp bao.
+	\item \textbf{Mask head}: dự đoán mask nhị phân pixel-wise cho vật thể.
 \end{itemize}
 
-Sau đó, mỗi RoI được đưa qua \textbf{ba nhánh song song}:
-\begin{itemize}
-	\item Classification head: dự đoán class
-	\item Bounding box head: hồi quy box
-	\item \textbf{Mask head: dự đoán mask}
-\end{itemize}
+\begin{center}
+	\includegraphics[width=0.95\textwidth]{images/mask_rcnn_diagram.png}
+	\captionof{figure}{Kiến trúc Mask R-CNN: backbone + RPN tạo proposals, RoIAlign trích xuất đặc trưng chính xác, ba nhánh song song thực hiện classification, box regression và mask prediction.}
+	\label{fig:mask_rcnn}
+\end{center}
 
----
+\textbf{RoIAlign --- Đổi phép làm tròn lấy bilinear interpolation.}
+Đây là đóng góp kỹ thuật quan trọng nhất của Mask R-CNN. RoI Pooling trong Fast/Faster R-CNN làm tròn tọa độ khi chiếu vùng đề xuất lên feature map --- sai số lượng tử hóa nhỏ nhưng đủ gây lệch vài pixel khi upscale lên ảnh gốc. Với bounding box, sai lệch vài pixel không ảnh hưởng nhiều. Nhưng với mask pixel-wise, đó là thảm họa.
 
-\textbf{RoIAlign: Khắc phục sai số lượng tử hóa}
-
-Khác với RoI Pooling, RoIAlign loại bỏ hoàn toàn phép làm tròn tọa độ.
-
-\textbf{Cơ chế:}
-
-Giả sử một điểm lấy mẫu $(x, y)$ trên feature map có tọa độ thực (không nguyên). Giá trị tại điểm này được nội suy song tuyến tính:
-
+\textbf{RoIAlign} giải quyết bằng cách \textit{không bao giờ làm tròn}: thay vì snap tọa độ về pixel gần nhất, nó lấy mẫu tại các điểm tọa độ thực (float) và dùng \textbf{bilinear interpolation} để tính giá trị tại đó:
 \[
-F(x,y) = \sum_{i,j} w_{ij} F(\lfloor x \rfloor + i, \lfloor y \rfloor + j)
+F(x, y) = \sum_{i \in \{0,1\},\, j \in \{0,1\}} w_{ij} \cdot F\!\left(\lfloor x \rfloor + i,\; \lfloor y \rfloor + j\right)
 \]
+trong đó $w_{ij}$ là trọng số nội suy tỷ lệ với khoảng cách từ $(x,y)$ đến từng điểm lưới lân cận.
 
-trong đó $w_{ij}$ là trọng số nội suy dựa trên khoảng cách.
+\begin{center}
+	\includegraphics[width=0.90\textwidth]{images/mask_rcnn_fig2.png}
+	\captionof{figure}{So sánh RoI Pooling và RoIAlign. RoI Pooling làm tròn tọa độ (đường kẻ đứt) gây lệch vùng; RoIAlign dùng bilinear interpolation tại tọa độ thực, căn chỉnh chính xác feature với vùng trong ảnh gốc.}
+	\label{fig:roialign}
+\end{center}
 
-\textbf{Quy trình:}
-\begin{enumerate}
-	\item Chia RoI thành $H_f \times W_f$ bins (không làm tròn biên)
-	\item Lấy nhiều điểm sample trong mỗi bin
-	\item Áp dụng bilinear interpolation tại mỗi điểm
-	\item Aggregate (thường là average)
-\end{enumerate}
+Kết quả: mask head nhận được đặc trưng được căn chỉnh hoàn hảo với vùng vật thể --- gradient mượt, không còn sai số tích lũy. Chỉ riêng việc đổi từ RoI Pooling sang RoIAlign đã cải thiện mask AP thêm \textbf{3 điểm}.
 
----
+\textbf{Mask head --- Dự đoán mask bằng FCN.}
+Mask head là một \textbf{Fully Convolutional Network} nhỏ (không có fully-connected layer) nhận đặc trưng $14 \times 14$ từ RoIAlign và xuất ra tensor mask $K \times 28 \times 28$, trong đó $K$ là số lớp vật thể. Mỗi trong $K$ kênh là một binary mask dự đoán độc lập cho lớp đó.
 
-\textbf{Phân tích toán học:}
-
-RoIAlign thực hiện ánh xạ:
+Điểm đặc biệt: Mask R-CNN \textit{không} cho mask và classification cạnh tranh nhau. Mask head dự đoán $K$ mask \textit{đồng thời cho tất cả lớp}, còn classification head quyết định \textit{lớp nào} được chọn. Loss mask chỉ tính trên lớp ground-truth:
 \[
-\mathcal{A}: \mathbb{R}^{C \times H' \times W'} \rightarrow \mathbb{R}^{C \times H_f \times W_f}
+L_{\text{mask}} = -\frac{1}{m^2} \sum_{u,v} \left[ M^*_{uv} \log \hat{M}_{uv} + (1 - M^*_{uv}) \log(1 - \hat{M}_{uv}) \right]
 \]
 
-\textbf{Ưu điểm so với RoI Pooling:}
-\begin{itemize}
-	\item Không có quantization error
-	\item Gradient mượt:
-	\[
-	\frac{\partial L}{\partial F(x,y)} \neq 0 \quad \forall (x,y) \text{ lân cận}
-	\]
-	\item Không còn sparse gradient như max-pooling
-\end{itemize}
+Cách tiếp cận này --- gọi là \textbf{decouple mask khỏi classification} --- tránh mask của một lớp bị ảnh hưởng bởi nhãn của lớp khác, giúp mỗi pixel được học như một bài toán binary classification độc lập.
 
-→ đặc biệt quan trọng cho bài toán segmentation pixel-level.
+\begin{center}
+	\includegraphics[width=0.85\textwidth]{images/mask_rcnn_fig3.png}
+	\captionof{figure}{Mask head trong Mask R-CNN: một FCN nhỏ nhận đặc trưng $14\times14$, xuất mask $K\times28\times28$. Loss chỉ áp dụng trên kênh tương ứng với ground-truth class, không ảnh hưởng qua lại giữa các lớp.}
+	\label{fig:mask_head}
+\end{center}
 
----
-
-\textbf{Mask Head: Pixel-wise Prediction}
-
-Thay vì fully-connected layers, Mask R-CNN sử dụng một mạng convolution nhỏ:
-
-\[
-M_i = \sigma(\text{ConvNet}(f_i)) \in \mathbb{R}^{K \times m \times m}
-\]
-
-\begin{itemize}
-	\item $K$: số lớp
-	\item $m \times m$: resolution của mask (ví dụ $28 \times 28$)
-\end{itemize}
-
-\textbf{Cách dự đoán:}
-\begin{itemize}
-	\item Với mỗi RoI, model dự đoán $K$ mask
-	\item Chỉ chọn mask tương ứng với class ground-truth
-\end{itemize}
-
----
-
-\textbf{Tại sao decouple mask và classification?}
-
-Khác với YOLO (joint prediction), Mask R-CNN tách riêng:
-
-\begin{itemize}
-	\item Classification: dự đoán $p(c|R_i)$
-	\item Mask: dự đoán $M_i$ độc lập theo từng class
-\end{itemize}
-
-\textbf{Lý do:}
-\begin{itemize}
-	\item Tránh coupling giữa localization và segmentation
-	\item Giúp mỗi pixel được học độc lập (pixel-wise binary classification)
-\end{itemize}
-
----
-
-\textbf{Hàm mất mát:}
-
+\textbf{Hàm mất mát --- Ba nhiệm vụ, một lần tối ưu.}
+Toàn bộ mạng được huấn luyện end-to-end với loss tổng hợp:
 \[
 L = L_{\text{cls}} + L_{\text{box}} + L_{\text{mask}}
 \]
+Ba thành phần này độc lập và không cạnh tranh nhau: $L_{\text{cls}}$ (cross-entropy) hướng dẫn classification head, $L_{\text{box}}$ (Smooth L1) hướng dẫn box regression, và $L_{\text{mask}}$ (binary cross-entropy per-pixel) hướng dẫn mask head. Mask branch cung cấp tín hiệu gradient dày đặc (dense) từ $28 \times 28 = 784$ pixel mỗi RoI, giúp backbone học biểu diễn không gian phong phú hơn.
 
-\begin{itemize}
-	\item $L_{\text{cls}}$: cross-entropy
-	\item $L_{\text{box}}$: Smooth L1
-	\item $L_{\text{mask}}$: binary cross-entropy:
-	\[
-	L_{\text{mask}} = - \frac{1}{m^2} \sum_{u,v}
-	\left[
-	M_{uv}^* \log M_{uv} + (1 - M_{uv}^*) \log(1 - M_{uv})
-	\right]
-	\]
-\end{itemize}
-
-\textbf{Lưu ý:}
-\begin{itemize}
-	\item $L_{\text{mask}}$ chỉ tính trên class đúng (không tính cho các class khác)
-	\item Đây là \textbf{pixel-wise independent classification}
-\end{itemize}
-
----
-
-\textbf{Gradient flow:}
-
-\[
-\nabla L = \nabla L_{\text{cls}} + \nabla L_{\text{box}} + \nabla L_{\text{mask}}
-\]
-
-\begin{itemize}
-	\item Mask branch cung cấp tín hiệu gradient dày đặc (dense signal)
-	\item Giúp backbone học representation tốt hơn cho cấu trúc không gian
-\end{itemize}
-
----
-
-\textbf{Tầm quan trọng:}
-
-Mask R-CNN cho thấy rằng:
-\begin{itemize}
-	\item Việc giữ chính xác thông tin không gian (RoIAlign) là then chốt
-	\item Detection có thể mở rộng tự nhiên sang segmentation
-\end{itemize}
-
-Nó trở thành chuẩn mực cho các bài toán:
-\begin{itemize}
-	\item Instance segmentation
-	\item Medical imaging
-	\item Autonomous driving
-\end{itemize}
-\begin{center} 
-	\includegraphics[width=0.95\textwidth]{images/mask_rcnn_diagram.png} 
-	\captionof{figure}{Kiến trúc Mask R-CNN: thêm nhánh Mask cho mỗi RoI, sử dụng RoIAlign để tăng độ chính xác của mặt nạ.} 
-	\label{fig:mask_rcnn} 
+\begin{center}
+	\includegraphics[width=0.90\textwidth]{images/mask_rcnn_fig4.png}
+	\captionof{figure}{Ví dụ kết quả Mask R-CNN trên nhiều loại ảnh khác nhau: mỗi instance được tô màu riêng biệt, kể cả khi các vật thể chồng lấp lên nhau.}
+	\label{fig:mask_rcnn_results2}
 \end{center}
----
 
 \begin{mdframed}[style=infobox]
-	\textbf{Các Khái niệm Cốt lõi: IoU và NMS}
-	
-	\begin{itemize}
-		\item \textbf{Intersection over Union (IoU):}
-		\[
-		\text{IoU}(A, B) = \frac{\text{Area}(A \cap B)}{\text{Area}(A \cup B)}
-		\]
-		
-		```
-		\textbf{Phân tích:}
-		\begin{itemize}
-			\item Là một metric không khả vi → không dùng trực tiếp làm loss
-			\item Dùng để:
-			\begin{itemize}
-				\item Gán nhãn anchor
-				\item Đánh giá prediction
-			\end{itemize}
-		\end{itemize}
-		
-		---
-		
-		\item \textbf{Non-Maximum Suppression (NMS):}
-		
-		Given tập bounding boxes $\{b_i\}$ với score $s_i$:
-		
-		\begin{enumerate}
-			\item Chọn $b^* = \arg\max s_i$
-			\item Loại bỏ mọi $b_j$ sao cho:
-			\[
-			\text{IoU}(b^*, b_j) > \tau
-			\]
-			\item Lặp lại
-		\end{enumerate}
-		
-		\textbf{Phân tích:}
-		\begin{itemize}
-			\item Là thuật toán greedy
-			\item Không khả vi → nằm ngoài pipeline học
-		\end{itemize}
-		```
-		
-	\end{itemize}
+\textbf{Kết quả và ứng dụng thực tế}
+
+Mask R-CNN đạt \textbf{37.1\% mask AP} và \textbf{39.8\% box AP} trên COCO test-dev với ResNet-101-FPN backbone, vượt trội mọi phương pháp instance segmentation trước đó. Tốc độ khoảng \textbf{5 FPS} trên GPU --- đủ dùng cho nhiều ứng dụng không yêu cầu real-time.
+
+Mô hình này trở thành nền tảng cho hàng loạt ứng dụng quan trọng:
+\begin{itemize}
+	\item \textbf{Y tế}: phân đoạn khối u, tế bào, cơ quan trong ảnh MRI/CT với độ chính xác pixel
+	\item \textbf{Xe tự lái}: phân biệt từng người đi bộ, xe máy, biển báo riêng lẻ ngay cả khi chồng lấp
+	\item \textbf{Bảo tồn động vật}: theo dõi từng cá thể động vật quý hiếm trong môi trường tự nhiên
+	\item \textbf{Kiểm soát chất lượng}: phát hiện khuyết tật chính xác đến từng pixel trên dây chuyền sản xuất
+\end{itemize}
 \end{mdframed}
 
 
@@ -1465,199 +892,110 @@ SSD cho thấy rằng:
 
 Những ý tưởng này đã trở thành nền tảng cho nhiều mô hình hiện đại như RetinaNet (Focal Loss) và các detector dựa trên FPN.
 
+\paragraph{Feature Pyramid Network (FPN, 2017):}
+Một trong những thách thức dai dẳng nhất của object detection là \textbf{vật thể đa kích thước}: một con người có thể chiếm 90\% diện tích ảnh hoặc chỉ vài pixel. CNN truyền thống xử lý ảnh theo một tỷ lệ duy nhất --- feature map ở layer sâu giàu ngữ nghĩa nhưng mất độ phân giải không gian, còn feature map ở layer nông có độ phân giải cao nhưng ngữ nghĩa nghèo. \textbf{Feature Pyramid Network (FPN)} \cite{Lin2017FPN} của Lin và cộng sự giải quyết mâu thuẫn này bằng cách xây dựng một \textit{kim tự tháp đặc trưng} kết hợp ưu điểm của cả hai.
+
+\textbf{Hai luồng xử lý bổ sung nhau.}
+FPN hoạt động với hai luồng đồng thời trên backbone CNN (thường là ResNet):
+
+\begin{itemize}
+    \item \textbf{Bottom-up pathway} (xuôi chiều): Luồng forward pass thông thường của CNN. Khi đi sâu hơn, feature map giảm kích thước (stride tăng) nhưng mỗi pixel mã hóa ngữ nghĩa phong phú hơn. Các tầng output ký hiệu là $\{C_2, C_3, C_4, C_5\}$ với stride $\{4, 8, 16, 32\}$.
+    \item \textbf{Top-down pathway} (ngược chiều): Bắt đầu từ $C_5$ (layer sâu nhất, ngữ nghĩa cao nhất), upsample dần lên các độ phân giải lớn hơn. Tại mỗi tầng, feature map được upsample 2× rồi \textit{cộng} với feature map tương ứng từ bottom-up qua một \textbf{lateral connection} ($1 \times 1$ conv để chuẩn hóa số kênh về 256):
+\end{itemize}
+
+\[
+P_k = \text{Conv}_{1\times1}(C_k) + \text{Upsample}(P_{k+1})
+\]
+
+Kết quả là kim tự tháp $\{P_2, P_3, P_4, P_5\}$ --- mỗi tầng có 256 kênh, kết hợp độ phân giải cao từ layer nông và ngữ nghĩa phong phú từ layer sâu.
+
+\textbf{Tại sao FPN hiệu quả?} Hãy nghĩ về nó như thế này: layer $C_5$ ``nhìn thấy'' toàn bộ bức ảnh nhưng mỗi pixel của nó đại diện cho vùng $32 \times 32$ pixel gốc --- tốt cho vật thể lớn, tệ cho vật thể nhỏ. Layer $C_2$ ngược lại --- mỗi pixel chỉ đại diện cho $4 \times 4$ pixel gốc. FPN truyền thông tin từ $C_5$ ngược lên, bổ sung ngữ nghĩa cho các layer nông. Kết quả: detector trên $P_2$ vừa có độ phân giải cao (phát hiện vật thể nhỏ) vừa ``biết'' context toàn cục (nhờ thông tin từ $C_5$). Cải thiện so với single-scale: \textbf{+8 AP trên COCO}.
+
+Mỗi tầng $P_k$ chịu trách nhiệm phát hiện vật thể ở kích thước tương ứng: $P_2$ cho vật thể rất nhỏ ($32^2$ pixel), $P_3$ cho nhỏ, $P_4$ cho trung bình, $P_5$ cho lớn. FPN trở thành backbone tiêu chuẩn cho hầu hết detector hiện đại --- từ Faster R-CNN, Mask R-CNN đến RetinaNet, YOLO v3 trở đi.
 
 \paragraph{RetinaNet và Focal Loss (2017):}
+Ngay cả với FPN, các one-stage detector vẫn thua two-stage về độ chính xác. Câu hỏi là: \textit{tại sao?} Năm 2017, Lin và cộng sự (Facebook AI) chỉ ra nguyên nhân gốc rễ không phải là kiến trúc mà là \textbf{mất cân bằng lớp cực độ}: một ảnh thông thường có thể tạo ra $\sim$100.000 anchor, nhưng chỉ $\sim$10 anchor là positive (chứa vật thể thực sự). 99.99\% còn lại là nền.
 
-Một trong những vấn đề cốt lõi của các mô hình phát hiện vật thể một giai đoạn (single-stage detectors) là \textbf{mất cân bằng lớp cực độ} giữa foreground và background. Trong quá trình huấn luyện với dense prediction, số lượng anchor thuộc lớp nền (negative samples) thường lớn hơn hàng nghìn lần so với anchor chứa vật thể (positive samples). Điều này khiến các hàm loss truyền thống như cross-entropy bị chi phối bởi các mẫu dễ (easy negatives), làm suy giảm khả năng học các mẫu khó và ảnh hưởng đến hiệu năng tổng thể.
+Cross-entropy thông thường xử lý tất cả anchor bình đẳng. Hàng trăm nghìn anchor nền, dù mỗi cái chỉ góp loss nhỏ, cộng lại áp đảo tín hiệu từ những anchor vật thể hiếm hoi. Mô hình học cách phân loại nền rất giỏi --- nhưng detection thật sự thì không.
 
-\textbf{RetinaNet} được đề xuất nhằm giải quyết trực tiếp vấn đề này thông qua việc kết hợp một kiến trúc mạnh với một hàm loss mới: \textbf{Focal Loss}.
-
----
-
-\textbf{Kiến trúc RetinaNet:}
-
-RetinaNet là một mô hình single-stage detector dựa trên cơ chế \textbf{dense prediction} với ba thành phần chính: backbone, feature pyramid và prediction heads.
-
-\textit{Backbone và Feature Pyramid Network (FPN):}
-\begin{itemize}
-	\item Backbone thường sử dụng ResNet (ResNet-50 hoặc ResNet-101) để trích xuất đặc trưng.
-	\item Feature Pyramid Network (FPN) được xây dựng trên backbone nhằm tạo ra các feature maps đa tỉ lệ ${P_3, P_4, P_5, P_6, P_7}$.
-	\item FPN sử dụng cơ chế top-down pathway và lateral connections:
-	\begin{itemize}
-		\item Upsample feature map từ tầng sâu
-		\item Kết hợp với feature map tương ứng từ backbone
-	\end{itemize}
-\end{itemize}
-
-Điều này cho phép RetinaNet phát hiện vật thể ở nhiều kích thước khác nhau với độ chính xác cao.
-
----
-
-\textit{Detection Head:}
-
-RetinaNet sử dụng hai subnet riêng biệt (decoupled head):
-
-\begin{itemize}
-	\item \textbf{Classification subnet:}
-	\begin{itemize}
-		\item Gồm nhiều convolution layers (thường 4 layers)
-		\item Output: xác suất lớp cho mỗi anchor
-	\end{itemize}
-	
-	```
-	\item \textbf{Regression subnet:}
-	\begin{itemize}
-		\item Cấu trúc tương tự classification subnet
-		\item Output: offsets $(t_x, t_y, t_w, t_h)$ cho bounding box
-	\end{itemize}
-	```
-	
-\end{itemize}
-
-Hai subnet này \textbf{không chia sẻ tham số}, giúp tối ưu riêng cho từng nhiệm vụ.
-
----
-
-\textbf{Anchor-based dense prediction:}
-
-Tại mỗi vị trí trên mỗi feature map, RetinaNet đặt nhiều anchor boxes với các scale và aspect ratio khác nhau. Tổng số anchor có thể lên đến hàng trăm nghìn trên một ảnh.
-
-Bounding box được tham số hóa tương tự SSD:
-
-\begin{align}
-	t_x &= \frac{x - a_x}{a_w}, \quad
-	t_y = \frac{y - a_y}{a_h} \
-	t_w &= \log \left( \frac{w}{a_w} \right), \quad
-	t_h = \log \left( \frac{h}{a_h} \right)
-\end{align}
-
----
-
-\textbf{Focal Loss:}
-
-Focal Loss được thiết kế để giảm ảnh hưởng của các mẫu dễ và tập trung vào các mẫu khó:
+\textbf{Focal Loss --- Giải pháp qua một hệ số đơn giản.}
+\textbf{RetinaNet} \cite{Lin2017RetinaNet} đề xuất \textbf{Focal Loss}: thêm một hệ số điều chỉnh vào cross-entropy để tự động \textit{giảm trọng số} các mẫu dễ (easy negatives) và \textit{tăng trọng số} các mẫu khó:
 
 \begin{equation}
-	\text{FL}(p_t) = - \alpha_t (1 - p_t)^{\gamma} \log(p_t)
+    \text{FL}(p_t) = -\alpha_t\,(1 - p_t)^{\gamma}\,\log(p_t)
 \end{equation}
 
-Trong đó:
+Trong đó $p_t$ là xác suất dự đoán cho đúng nhãn, $\gamma \geq 0$ là tham số điều chỉnh (thực nghiệm cho thấy $\gamma = 2$ tốt nhất), và $\alpha_t$ cân bằng tần suất giữa positive/negative.
+
+Cơ chế hoạt động của $(1-p_t)^\gamma$ rất trực quan:
 \begin{itemize}
-	\item $p_t = p$ nếu mẫu thuộc lớp dương, và $p_t = 1 - p$ nếu là lớp âm
-	\item $\alpha_t$: hệ số cân bằng giữa các lớp
-	\item $\gamma \geq 0$: tham số điều chỉnh mức độ tập trung vào mẫu khó
+    \item \textbf{Anchor nền dễ phân loại} ($p_t \approx 0.99$): $(1 - 0.99)^2 = 0.0001$ --- loss giảm xuống còn 0.01\% so với cross-entropy thông thường.
+    \item \textbf{Anchor vật thể khó nhận biết} ($p_t \approx 0.3$): $(1 - 0.3)^2 = 0.49$ --- loss chỉ giảm một chút, vẫn nhận được gradient mạnh để học.
 \end{itemize}
 
----
+Kết quả: mô hình tự động tập trung vào những anchor \textit{thật sự cần học}, không lãng phí gradient vào 99\% nền hiển nhiên. Không cần hard negative mining thủ công như SSD.
 
-\textbf{Phân tích hành vi của Focal Loss:}
+\textbf{Kiến trúc RetinaNet.}
+RetinaNet kết hợp ba thành phần: backbone \textbf{ResNet-50/101} + \textbf{FPN} tạo feature pyramid $\{P_3, \ldots, P_7\}$ với 256 kênh mỗi tầng; hai \textbf{subnet song song} (không chia sẻ tham số) --- mỗi subnet là 4 lớp Conv $3\times3$:
+\begin{itemize}
+    \item \textit{Classification subnet}: với mỗi trong $A = 9$ anchor tại mỗi vị trí, dự đoán xác suất $K$ lớp --- output $K \times A$ giá trị, dùng Focal Loss.
+    \item \textit{Box regression subnet}: dự đoán 4 offset bounding box cho mỗi anchor --- dùng Smooth L1 loss.
+\end{itemize}
 
-So với cross-entropy:
+Cả hai subnet dùng chung kiến trúc nhưng \textit{không chia sẻ tham số} để mỗi nhiệm vụ được tối ưu độc lập.
+
+\begin{mdframed}[style=infobox]
+\textbf{Kết quả và tầm quan trọng của RetinaNet}
+
+RetinaNet với ResNet-101-FPN đạt \textbf{40.8 AP} trên COCO --- vượt Faster R-CNN + FPN (36.2 AP) và nhanh hơn $\sim$5 lần. Đây là lần đầu tiên một one-stage detector vượt two-stage về độ chính xác.
+
+Focal Loss trở thành nền tảng cho hàng loạt hàm loss hiện đại: Quality Focal Loss (QFL), Distribution Focal Loss (DFL) trong GFL, VariFocal Loss trong VarifocalNet --- tất cả đều kế thừa ý tưởng \textit{reweight gradient theo độ khó của mẫu}.
+\end{mdframed}
+
+\subsection{Đánh giá mô hình: Precision, Recall và mAP}
+\label{subsec:map_evaluation}
+
+Trước khi tiếp tục với các kiến trúc hiện đại, cần hiểu rõ thước đo mà tất cả các mô hình trên đều được so sánh: \textbf{mAP (mean Average Precision)}. Đây là metric tiêu chuẩn trong object detection, nhưng cách tính của nó thường bị giải thích sơ sài. Hãy xây dựng từ nền tảng.
+
+\textbf{Precision và Recall --- Hai mặt của một đồng xu.}
+Khi một detector dự đoán một bounding box, có hai câu hỏi: (1) Dự đoán đó có đúng không? (2) Mô hình có bỏ sót vật thể nào không?
+
+Một dự đoán được coi là \textbf{True Positive (TP)} nếu: đúng lớp vật thể \textit{và} IoU với ground-truth $\geq$ ngưỡng (thường 0.5). Nếu không khớp ground-truth nào, đó là \textbf{False Positive (FP)}. Ground-truth không được detect là \textbf{False Negative (FN)}.
+
 \[
-CE(p_t) = - \log(p_t)
+\text{Precision} = \frac{TP}{TP + FP} \qquad \text{Recall} = \frac{TP}{TP + FN}
 \]
 
-Focal Loss bổ sung hệ số:
+Precision cao nghĩa là ít dự đoán sai; Recall cao nghĩa là ít bỏ sót. Hai đại lượng này thường đánh đổi nhau: hạ ngưỡng confidence → detect nhiều hơn → Recall tăng nhưng Precision giảm.
+
+\textbf{Precision-Recall Curve và Average Precision (AP).}
+Bằng cách thay đổi ngưỡng confidence từ 1.0 xuống 0.0, ta thu được một tập các cặp (Precision, Recall). Vẽ lên đồ thị tạo thành \textbf{Precision-Recall curve}. \textbf{Average Precision (AP)} là diện tích dưới đường cong này --- một số duy nhất từ 0 đến 1 tóm tắt hiệu năng của mô hình trên \textit{một lớp vật thể}.
+
+Công thức tính AP theo phương pháp \textit{all-point interpolation} (PASCAL VOC 2010+, COCO):
 \[
-(1 - p_t)^{\gamma}
+\text{AP} = \int_0^1 P(r)\, dr \approx \sum_{k} \left( r_k - r_{k-1} \right) \cdot P_{\text{interp}}(r_k)
 \]
+trong đó $P_{\text{interp}}(r) = \max_{\tilde{r} \geq r} P(\tilde{r})$ là precision nội suy tại mỗi mức recall.
 
-\textit{Trường hợp mẫu dễ:}
+\textbf{mAP --- Trung bình AP trên tất cả lớp.}
+\[
+\text{mAP} = \frac{1}{C} \sum_{c=1}^{C} \text{AP}_c
+\]
+trong đó $C$ là số lớp vật thể. Mô hình phát hiện tốt đều lớp (cả vật thể phổ biến lẫn hiếm) sẽ có mAP cao.
+
+\begin{mdframed}[style=infobox]
+\textbf{PASCAL VOC vs. COCO: Hai tiêu chuẩn khác nhau}
+
+\textbf{PASCAL VOC}: AP tính tại ngưỡng IoU cố định 0.5 → ký hiệu $\text{AP}_{50}$ hay $\text{mAP@0.5}$. Dễ đạt điểm cao vì cho phép box không quá chính xác.
+
+\textbf{COCO}: Nghiêm ngặt hơn nhiều. $\text{AP}$ là trung bình của AP tại 10 ngưỡng IoU từ 0.50 đến 0.95 (bước 0.05) → ký hiệu $\text{mAP@[0.5:0.95]}$. Mô hình phải dự đoán \textit{chính xác vị trí} mới đạt điểm cao. Ngoài ra COCO còn báo cáo riêng:
 \begin{itemize}
-	\item $p_t \rightarrow 1$
-	\item $(1 - p_t)^{\gamma} \rightarrow 0$
-	\item $\Rightarrow$ loss giảm mạnh
+    \item $\text{AP}_S$, $\text{AP}_M$, $\text{AP}_L$: AP theo kích thước vật thể (small/medium/large)
+    \item $\text{AP}_{50}$, $\text{AP}_{75}$: AP tại ngưỡng IoU cụ thể
 \end{itemize}
 
-\textit{Trường hợp mẫu khó:}
-\begin{itemize}
-	\item $p_t \rightarrow 0$
-	\item $(1 - p_t)^{\gamma} \approx 1$
-	\item $\Rightarrow$ loss gần như giữ nguyên
-\end{itemize}
-
----
-
-\textbf{Phân tích gradient (điểm quan trọng):}
-
-Gradient của Focal Loss có dạng:
-
-\begin{equation}
-	\frac{\partial FL}{\partial z} \propto (1 - p_t)^{\gamma} \left( \gamma p_t \log(p_t) + p_t - 1 \right)
-\end{equation}
-
-Điều này cho thấy:
-\begin{itemize}
-	\item Gradient của các mẫu dễ bị giảm mạnh
-	\item Gradient tập trung vào các mẫu khó
-\end{itemize}
-
-Đây là cơ chế chính giúp giải quyết mất cân bằng lớp mà không cần hard negative mining như SSD.
-
----
-
-\textbf{Hàm loss tổng thể:}
-
-RetinaNet sử dụng:
-\begin{itemize}
-	\item Focal Loss cho classification
-	\item Smooth L1 hoặc IoU-based loss cho localization
-\end{itemize}
-
----
-
-\textbf{Pipeline huấn luyện và suy luận:}
-
-\textit{Training:}
-\begin{enumerate}
-	\item Input image $\rightarrow$ backbone (ResNet)
-	\item Feature extraction $\rightarrow$ FPN
-	\item Sinh anchor boxes trên tất cả feature maps
-	\item Matching với ground truth (IoU-based)
-	\item Tính Focal Loss (classification) + localization loss
-	\item Backpropagation
-\end{enumerate}
-
-\textit{Inference:}
-\begin{enumerate}
-	\item Forward pass
-	\item Decode bounding boxes
-	\item Tính confidence score
-	\item Áp dụng Non-Maximum Suppression (NMS)
-\end{enumerate}
-
----
-
-\textbf{Ưu điểm:}
-
-\begin{itemize}
-	\item Giải quyết hiệu quả class imbalance mà không cần hard negative mining
-	\item Độ chính xác cao, vượt Faster R-CNN trong nhiều benchmark
-	\item Kiến trúc đơn giản, dễ mở rộng
-\end{itemize}
-
----
-
-\textbf{Hạn chế:}
-
-\begin{itemize}
-	\item Vẫn phụ thuộc vào anchor boxes (cần tuning)
-	\item Số lượng anchor lớn $\rightarrow$ chi phí tính toán cao
-	\item Focal Loss cần tuning tham số $\gamma$ và $\alpha$
-\end{itemize}
-
----
-
-\textbf{Insight quan trọng:}
-
-RetinaNet chứng minh rằng:
-\begin{itemize}
-	\item Vấn đề chính của single-stage detector không nằm ở kiến trúc mà ở \textbf{hàm loss}
-	\item Việc điều chỉnh phân phối gradient (gradient reweighting) quan trọng hơn việc loại bỏ mẫu
-	\item Dense detection có thể đạt độ chính xác cao nếu xử lý tốt class imbalance
-\end{itemize}
-
-Focal Loss đã trở thành nền tảng cho nhiều phương pháp sau này, bao gồm các biến thể như Quality Focal Loss và Distribution Focal Loss trong các detector hiện đại.
+Khi đọc benchmark: 50 AP trên COCO $\approx$ rất tốt; 73 mAP trên PASCAL VOC cũng tốt --- nhưng hai con số này \textit{không so sánh được} với nhau.
+\end{mdframed}
 
 \subsection{Kỷ nguyên Transformer: DETR và các Cải tiến}
 \label{subsec:transformer_based_detectors}
