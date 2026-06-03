@@ -12,9 +12,11 @@ Chương này sẽ đưa chúng ta vào một lãnh địa kỳ diệu và đầ
 
 Cuộc cách mạng sáng tạo này đã diễn ra qua nhiều làn sóng, và chúng ta sẽ lần theo dấu chân của từng cuộc cách mạng đó:
 \begin{itemize}
-	\item Chúng ta sẽ bắt đầu với \textbf{Mạng Sinh đối nghịch (Generative Adversarial Networks - GANs)}, một ý tưởng thiên tài về một trò chơi "mèo vờn chuột" giữa hai mạng nơ-ron: một "Họa sĩ" (Generator) cố gắng vẽ ra những bức ảnh giả ngày càng giống thật, và một "Nhà phê bình" (Discriminator) cố gắng phân biệt giữa thật và giả. Cuộc đối đầu này đã đẩy khả năng sinh ảnh lên một tầm cao mới, với các mô hình như \textbf{StyleGAN} có khả năng tạo ra những khuôn mặt người siêu thực.
-	
-	\item Tiếp theo, chúng ta sẽ chứng kiến sự trỗi dậy của một mô thức mới đã làm lu mờ cả GANs: \textbf{các Mô hình Khuếch tán (Diffusion Models)}. Lấy cảm hứng từ nhiệt động lực học, các mô hình này học cách "khử nhiễu" một cách từ từ để biến một mớ hỗn độn ngẫu nhiên thành một hình ảnh mạch lạc và chi tiết. Chính công nghệ này là nền tảng đằng sau các công cụ tạo ảnh từ văn bản (text-to-image) gây chấn động như \textbf{Stable Diffusion} và \textbf{Midjourney}, cho phép bất kỳ ai cũng có thể trở thành một "họa sĩ" chỉ bằng vài dòng mô tả.
+	\item Chúng ta sẽ bắt đầu với nền tảng lý thuyết: \textbf{Variational Autoencoder (VAE)}. Đây là kiến trúc tiên phong đặt ra ý tưởng về \textit{không gian tiềm ẩn liên tục và có cấu trúc xác suất}—ý tưởng cốt lõi mà hầu hết các mô hình sinh hiện đại, đặc biệt là Diffusion Models, đều kế thừa và phát triển.
+
+	\item Tiếp theo là \textbf{Mạng Sinh đối nghịch (Generative Adversarial Networks - GANs)}, một ý tưởng thiên tài về một trò chơi "mèo vờn chuột" giữa hai mạng nơ-ron: một "Họa sĩ" (Generator) cố gắng vẽ ra những bức ảnh giả ngày càng giống thật, và một "Nhà phê bình" (Discriminator) cố gắng phân biệt giữa thật và giả. Cuộc đối đầu này đã đẩy khả năng sinh ảnh lên một tầm cao mới, với các mô hình như \textbf{StyleGAN} có khả năng tạo ra những khuôn mặt người siêu thực.
+
+	\item Sau đó, chúng ta sẽ chứng kiến sự trỗi dậy của một mô thức mới đã làm lu mờ cả GANs: \textbf{các Mô hình Khuếch tán (Diffusion Models)}. Lấy cảm hứng từ nhiệt động lực học, các mô hình này học cách "khử nhiễu" một cách từ từ để biến một mớ hỗn độn ngẫu nhiên thành một hình ảnh mạch lạc và chi tiết. Chính công nghệ này là nền tảng đằng sau các công cụ tạo ảnh từ văn bản (text-to-image) gây chấn động như \textbf{Stable Diffusion} và \textbf{Midjourney}, cho phép bất kỳ ai cũng có thể trở thành một "họa sĩ" chỉ bằng vài dòng mô tả.
 	
 	\item Từ ảnh tĩnh, chúng ta sẽ tiến vào thế giới của chuyển động với các mô hình \textbf{Text-to-Video}. Chúng ta sẽ khám phá những công nghệ đột phá đằng sau các mô hình gây kinh ngạc như \textbf{Sora} của OpenAI, có khả năng tạo ra các đoạn video siêu thực, động và có cốt truyện chỉ từ một câu lệnh.
 	

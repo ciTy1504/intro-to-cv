@@ -35,7 +35,22 @@
       "Bash(curl -sL -o /c/Users/admin/Desktop/intro-to-cv/Tex/images/ldm_tensors.png https://jalammar.github.io/images/stable-diffusion/stable-diffusion-components-and-tensors.png -w 'tensors: %{http_code}\\\\n')",
       "Bash(curl -sL -o /c/Users/admin/Desktop/intro-to-cv/Tex/images/ldm_latent_vs_pixel.png https://jalammar.github.io/images/stable-diffusion/stable-diffusion-latent-space-pixel-space.png -w 'latent_vs_pixel: %{http_code}\\\\n')",
       "Bash(curl -sL -o /c/Users/admin/Desktop/intro-to-cv/Tex/images/ldm_vae.png https://jalammar.github.io/images/stable-diffusion/stable-diffusion-autoencoder.png -w 'vae: %{http_code}\\\\n')",
-      "Bash(curl -sL -o /c/Users/admin/Desktop/intro-to-cv/Tex/images/ldm_unet_text.png https://jalammar.github.io/images/stable-diffusion/unet-with-text-inputs-outputs-v2.png -w 'unet_text: %{http_code}\\\\n')"
+      "Bash(curl -sL -o /c/Users/admin/Desktop/intro-to-cv/Tex/images/ldm_unet_text.png https://jalammar.github.io/images/stable-diffusion/unet-with-text-inputs-outputs-v2.png -w 'unet_text: %{http_code}\\\\n')",
+      "WebFetch(domain:diffusionflow.github.io)",
+      "WebFetch(domain:apxml.com)",
+      "WebFetch(domain:sander.ai)",
+      "WebFetch(domain:mlabonne.github.io)",
+      "WebFetch(domain:medium.com)",
+      "WebFetch(domain:ericmjl.github.io)",
+      "WebFetch(domain:iclr-blogposts.github.io)",
+      "WebFetch(domain:www.assemblyai.com)",
+      "WebFetch(domain:arxiv.org)",
+      "WebFetch(domain:diffusion.condensedai.com)",
+      "Bash(curl -sL -o /c/Users/admin/Desktop/intro-to-cv/Tex/images/cfg_guidance_scale.png https://images.viblo.asia/full/b1f65e52-6c0e-44b5-b0e2-2e24c9b79c8c.png -w 'cfg_viblo: %{http_code}\\\\n')",
+      "Bash(curl -sL -o /c/Users/admin/Desktop/intro-to-cv/Tex/images/flow_matching_paths.png https://raw.githubusercontent.com/gle-bellier/flow-matching/main/assets/trajectories.png -w 'fm_paths: %{http_code}\\\\n')",
+      "Bash(curl -sL -o /c/Users/admin/Desktop/intro-to-cv/Tex/images/flow_matching_overview.png https://arxiv.org/html/2210.02747v2/x1.png -w 'fm_arxiv: %{http_code}\\\\n')",
+      "Bash(curl -sL -o /c/Users/admin/Desktop/intro-to-cv/Tex/images/cfg_score_geometry.png https://sander.ai/images/2022-05-26-guidance/scores.png -w 'cfg_score: %{http_code}\\\\n')",
+      "Bash(curl -sL -o /c/Users/admin/Desktop/intro-to-cv/Tex/images/flow_matching_compare.png https://arxiv.org/html/2210.02747v2/x2.png -w 'fm_compare: %{http_code}\\\\n')"
     ]
   }
 }
